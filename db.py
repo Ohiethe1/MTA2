@@ -57,7 +57,12 @@ def init_exception_form_db():
             supervisor_pass_no TEXT,
             oto TEXT,
             oto_amount_saved TEXT,
-            entered_in_uts TEXT
+            entered_in_uts TEXT,
+            regular_assignment TEXT,
+            report TEXT,
+            relief TEXT,
+            todays_date TEXT,
+            status TEXT DEFAULT 'processed'
         )
     ''')
     c.execute('''
@@ -148,37 +153,35 @@ def parse_exception_form(ocr_lines):
 
 # (Removed example usage block that called parse_exception_form and store_exception_form)
 
-def store_exception_form(form_data, rows):
+def store_exception_form(form_data, rows, username=""):
     conn = sqlite3.connect('forms.db')
     c = conn.cursor()
-    c.execute('''
-        INSERT INTO exception_forms (
-            pass_number, title, employee_name, rdos, actual_ot_date, div,
-            comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        form_data['pass_number'], form_data['title'], form_data['employee_name'],
-        form_data['rdos'], form_data['actual_ot_date'], form_data['div'],
-        form_data['comments'], form_data['supervisor_name'], form_data['supervisor_pass_no'],
-        form_data['oto'], form_data['oto_amount_saved'], form_data['entered_in_uts']
-    ))
+    # Only include fields present in form_data
+    form_fields = [
+        'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
+        'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
+        'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'username'
+    ]
+    insert_fields = [f for f in form_fields if f in form_data or f == 'username']
+    insert_values = [form_data.get(f, '') if f != 'username' else username for f in insert_fields]
+    placeholders = ', '.join(['?'] * len(insert_fields))
+    sql = f"INSERT INTO exception_forms ({', '.join(insert_fields)}) VALUES ({placeholders})"
+    c.execute(sql, insert_values)
     form_id = c.lastrowid
+    # Insert rows if any
+    row_fields = [
+        'form_id', 'code', 'code_description', 'line_location', 'run_no',
+        'exception_time_from_hh', 'exception_time_from_mm',
+        'exception_time_to_hh', 'exception_time_to_mm',
+        'overtime_hh', 'overtime_mm', 'bonus_hh', 'bonus_mm',
+        'nite_diff_hh', 'nite_diff_mm', 'ta_job_no'
+    ]
     for row in rows:
-        c.execute('''
-            INSERT INTO exception_form_rows (
-                form_id, code, code_description, line_location, run_no,
-                exception_time_from_hh, exception_time_from_mm,
-                exception_time_to_hh, exception_time_to_mm,
-                overtime_hh, overtime_mm, bonus_hh, bonus_mm,
-                nite_diff_hh, nite_diff_mm, ta_job_no
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            form_id, row['code'], row['code_description'], row['line_location'], row['run_no'],
-            row['exception_time_from_hh'], row['exception_time_from_mm'],
-            row['exception_time_to_hh'], row['exception_time_to_mm'],
-            row['overtime_hh'], row['overtime_mm'], row['bonus_hh'], row['bonus_mm'],
-            row['nite_diff_hh'], row['nite_diff_mm'], row['ta_job_no']
-        ))
+        insert_row_fields = [f for f in row_fields if f == 'form_id' or f in row]
+        insert_row_values = [form_id if f == 'form_id' else row.get(f, '') for f in insert_row_fields]
+        row_placeholders = ', '.join(['?'] * len(insert_row_fields))
+        row_sql = f"INSERT INTO exception_form_rows ({', '.join(insert_row_fields)}) VALUES ({row_placeholders})"
+        c.execute(row_sql, insert_row_values)
     conn.commit()
     conn.close()
 
@@ -199,12 +202,16 @@ def init_audit_db():
     conn.commit()
     conn.close()
 
-def log_audit(username, action, target_type, target_id, details=""):
-    conn = sqlite3.connect('forms.db')
+def log_audit(username, action, target_type, target_id, details="", conn=None):
+    close_conn = False
+    if conn is None:
+        conn = sqlite3.connect('forms.db', timeout=10)
+        close_conn = True
     c = conn.cursor()
     c.execute('''
         INSERT INTO audit_trail (username, action, target_type, target_id, details)
         VALUES (?, ?, ?, ?, ?)
     ''', (username, action, target_type, target_id, details))
-    conn.commit()
-    conn.close()
+    if close_conn:
+        conn.commit()
+        conn.close()

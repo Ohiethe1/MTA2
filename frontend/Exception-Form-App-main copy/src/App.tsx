@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import './App.css';
-import FormUpload from './components/FormUpload';
+import FormUpload from './FormUpload';
 import Dashboard from './components/Dashboard';
 import Header from './components/Header';
 import Login from './components/Login';
