@@ -1,5 +1,6 @@
 import logging
 from db import init_db, add_user
+import sqlite3
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,3 +50,14 @@ logging.info(f'Users added: {added_count}')
 logging.info(f'Users already existed: {exists_count}')
 
 export_users_to_csv(users)
+
+# Debug script: Print all forms in the exception_forms table
+with sqlite3.connect('forms.db', timeout=10) as conn:
+    c = conn.cursor()
+    c.execute('SELECT * FROM exception_forms')
+    rows = c.fetchall()
+    columns = [desc[0] for desc in c.description]
+    print(f"Found {len(rows)} forms in exception_forms table:")
+    for row in rows:
+        form = dict(zip(columns, row))
+        print(form)

@@ -46,7 +46,7 @@ const FormUpload: React.FC = () => {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
           </svg>
         </div>
-        <h2 className="text-2xl font-extrabold text-gray-900 mb-2 text-center">Upload Exception Claim Form</h2>
+        <h2 className="text-2xl font-extrabold text-gray-900 mb-2 text-center">Upload Overtime Forms</h2>
         <p className="text-gray-500 text-center mb-6">Select a scanned form image (JPG, PNG, etc.) and submit to extract all details automatically.</p>
         <form onSubmit={handleSubmit} className="space-y-6 w-full flex flex-col items-center">
           <label className="w-full flex flex-col items-center px-4 py-6 bg-gray-100 text-blue-600 rounded-lg shadow-md tracking-wide uppercase border border-blue-200 cursor-pointer hover:bg-blue-50 transition mb-2">

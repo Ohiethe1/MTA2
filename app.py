@@ -3,9 +3,6 @@ from flask import Flask, request, jsonify, g, Response
 from flask_cors import CORS
 from model import train_model
 from db import init_db, add_user, check_user
-import pytesseract
-import cv2
-from PIL import Image
 import re
 from db import init_exception_form_db, store_exception_form
 from exception_codes import exception_codes
@@ -13,6 +10,10 @@ import sqlite3
 import csv
 import requests
 import google.generativeai as genai
+import datetime
+import pdfplumber
+from PIL import Image
+import io
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -43,22 +44,15 @@ def gemini_extract_file_details(file_path, prompt="Extract all relevant details 
     if not gemini_model:
         print("Gemini API key not set. Skipping Gemini extraction.")
         return None
-    # Upload file to Gemini
     sample_file = genai.upload_file(path=file_path, display_name=os.path.basename(file_path))
     print(f"Uploaded file '{sample_file.display_name}' as: {sample_file.uri}")
-    # Generate content using the uploaded document
     response = gemini_model.generate_content([sample_file, prompt])
     print("Gemini extraction response:", response.text)
     return response.text
 
-# Remove pytesseract, cv2, PIL, and extract_text imports
-# Remove extract_text function
-# In upload_file, after saving the file, use only Gemini for extraction
-
 # Utility to clean and map Gemini output
 
-def clean_and_map_gemini_output(gemini_output):
-    # Remove markdown code block markers and whitespace
+def clean_and_map_gemini_output(gemini_output, form_type=None):
     cleaned = re.sub(r"^```json|^```|```$", "", gemini_output.strip(), flags=re.MULTILINE).strip()
     import json
     try:
@@ -67,141 +61,353 @@ def clean_and_map_gemini_output(gemini_output):
         print("Error parsing cleaned Gemini output:", e)
         return {}, []
 
-    key_map = {
-        "Pass Number": "pass_number",
-        "Title": "title",
-        "Employee Name": "employee_name",
-        "RDOS": "rdos",
-        "Actual OT Date": "actual_ot_date",
-        "DIV": "div",
-        "Comments": "comments",
-        "Supervisor Name": "supervisor_name",
-        "Supervisor Pass No.": "supervisor_pass_no",
-        "OTO": "oto",
-        "OTO Amount Saved": "oto_amount_saved",
-        "Entered in UTS": "entered_in_uts",
-        "Regular Assignment": "regular_assignment",
-        "Report station": "report",
-        "Relief": "relief",
-        "Today's Date": "todays_date",
-        "Code": "code",
-        "Line/Location": "line_location",
-        "Run No.": "run_no",
-        "Exception Time From HH": "exception_time_from_hh",
-        "Exception Time From MM": "exception_time_from_mm",
-        "Exception Time To HH": "exception_time_to_hh",
-        "Exception Time To MM": "exception_time_to_mm",
-        "Overtime HH": "overtime_hh",
-        "Overtime MM": "overtime_mm",
-        "Bonus HH": "bonus_hh",
-        "Bonus MM": "bonus_mm",
-        "Nite Diff HH": "nite_diff_hh",
-        "Nite Diff MM": "nite_diff_mm",
-        "TA Job No.": "ta_job_no"
-    }
+    # Normalize keys for mapping
+    def normalize_key(k):
+        return k.lower().replace(" ", "_").replace(".", "").replace("#", "").replace("/", "_").replace("'", "").replace("-", "_")
 
-    # Split into form_data and rows if needed
-    form_data = {}
+    # Full slot list for supervisor overtime form and exception claim (hourly) form
+    all_fields = [
+        # Supervisor/Overtime fields
+        "reg_assignment", "reg", "pass_number", "title", "rc_number", "employee_name", "report_loc", "date", "rdos", "date_of_overtime",
+        "job_number", "overtime_location", "report_time", "relief_time", "overtime_hours",
+        "reason_rdo", "reason_absentee_coverage", "reason_no_lunch", "reason_early_report", "reason_late_clear", "reason_save_as_oto", "reason_capital_support_go", "reason_other",
+        "acct_number", "amount",
+        "superintendent_authorization_signature", "superintendent_authorization_pass", "superintendent_authorization_date", "entered_into_uts",
+        # Exception claim (hourly) fields
+        "regular_assignment", "report", "relief", "todays_date", "title", "employee_name", "rdos", "actual_ot_date", "div", "pass_number",
+        "exception_code", "line_location", "run_no", "exception_time_from_hh", "exception_time_from_mm", "exception_time_to_hh", "exception_time_to_mm",
+        "overtime_hh", "overtime_mm", "ta_job_no", "comments", "oto", "oto_amount_saved_hh", "oto_amount_saved_mm", "entered_in_uts_yes", "entered_in_uts_no", "supervisor_name", "supervisor_pass_no"
+    ]
+    # Map normalized Gemini keys to our slots
+    key_map = {
+        # Supervisor/Overtime fields (expanded variants for all possible Gemini outputs)
+        "reg": "reg",
+        "reg.": "reg",
+        "assignment": "pass_number",
+        "pass": "pass_number",
+        "rc": "rc_number",
+        "rc.": "rc_number",
+        "rc#": "rc_number",
+        "rc_#": "rc_number",
+        "rc number": "rc_number",
+        "employee_name": "employee_name",
+        "employee name": "employee_name",
+        "job": "job_number",
+        "job.": "job_number",
+        "job#": "job_number",
+        "job_#": "job_number",
+        "job number": "job_number",
+        "overtime_location": "overtime_location",
+        "overtime location": "overtime_location",
+        "report_loc": "report_loc",
+        "report_loc.": "report_loc",
+        "report location": "report_loc",
+        "report_time": "report_time",
+        "report time": "report_time",
+        "relief_time": "relief_time",
+        "relief time": "relief_time",
+        "overtime_hours": "overtime_hours",
+        "overtime hours": "overtime_hours",
+        "date": "todays_date",
+        "date_of_overtime": "date_of_overtime",
+        "date of overtime": "date_of_overtime",
+        "rdo's": "rdos",
+        "rdos": "rdos",
+        "reason_for_overtime": "reason_for_overtime",
+        "reason for overtime": "reason_for_overtime",
+        "comments": "comments",
+        "acct": "acct_number",
+        "acct.": "acct_number",
+        "acct#": "acct_number",
+        "acct_#": "acct_number",
+        "acct number": "acct_number",
+        "amount": "amount",
+        "supervisors_signature": "superintendent_authorization_signature",
+        "supervisor's_signature": "superintendent_authorization_signature",
+        "superintendent_authorization_signature": "superintendent_authorization_signature",
+        "superintendent's_authorization_-_signature": "superintendent_authorization_signature",
+        "superintendent_authorization_pass": "superintendent_authorization_pass",
+        "superintendent's_authorization_-_pass": "superintendent_authorization_pass",
+        "superintendent_authorization_date": "superintendent_authorization_date",
+        "superintendent's_authorization_-_date": "superintendent_authorization_date",
+        "entered_into_uts": "entered_into_uts",
+        # Exception claim (hourly) fields
+        "regular_assignment": "regular_assignment",
+        "report": "report",
+        "relief": "relief",
+        "todays_date": "todays_date",
+        "today's_date": "todays_date",
+        "pass_number": "pass_number",
+        "title": "title",
+        "employee_name": "employee_name",
+        "rdos": "rdos",
+        "actual_ot_date": "actual_ot_date",
+        "div": "div",
+        "code": "exception_code",
+        "line_location": "line_location",
+        "run_no": "run_no",
+        "exception_time_from_hh": "exception_time_from_hh",
+        "exception_time_from_mm": "exception_time_from_mm",
+        "exception_time_to_hh": "exception_time_to_hh",
+        "exception_time_to_mm": "exception_time_to_mm",
+        "overtime_hh": "overtime_hh",
+        "overtime_mm": "overtime_mm",
+        "ta_job_no": "ta_job_no",
+        "comments": "comments",
+        "oto": "oto",
+        "oto_amount_saved_hh": "oto_amount_saved_hh",
+        "oto_amount_saved_mm": "oto_amount_saved_mm",
+        "entered_in_uts_yes": "entered_in_uts_yes",
+        "entered_in_uts_no": "entered_in_uts_no",
+        "supv_name": "supervisor_name",
+        "supervisor_name": "supervisor_name",
+        "pass_no": "supervisor_pass_no",
+        "supervisor_pass_no": "supervisor_pass_no",
+        "job_": "job_number",
+        "rc_": "rc_number",
+        "acct_": "acct_number",
+        "report_time": "report_time",
+        "relief_time": "relief_time",
+        "overtime_hours": "overtime_hours",
+        "superintendent_s_authorization___pass": "superintendent_authorization_pass",
+        "superintendent_s_authorization___date": "superintendent_authorization_date",
+        "superintendent_s_authorization___signature": "superintendent_authorization_signature",
+        "entered_into_uts": "entered_into_uts"
+    }
+    # Checkbox mapping
+    checkbox_map = {
+        "rdo": "reason_rdo",
+        "absentee_coverage": "reason_absentee_coverage",
+        "no_lunch": "reason_no_lunch",
+        "early_report": "reason_early_report",
+        "late_clear": "reason_late_clear",
+        "save_as_oto": "reason_save_as_oto",
+        "capital_support_go": "reason_capital_support_go",
+        "other": "reason_other"
+    }
+    form_data = {field: False if field.startswith('reason_') else '' for field in all_fields}
     row = {}
-    for k, v in data.items():
-        mapped = key_map.get(k, None)
-        if mapped:
-            if mapped in [
-                "code", "line_location", "run_no", "exception_time_from_hh", "exception_time_from_mm",
-                "exception_time_to_hh", "exception_time_to_mm", "overtime_hh", "overtime_mm",
-                "bonus_hh", "bonus_mm", "nite_diff_hh", "nite_diff_mm", "ta_job_no"
-            ]:
-                row[mapped] = v
+    # Flatten nested dicts if needed
+    def flatten(d, parent_key=""):
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}_{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten(v, new_key).items())
             else:
-                form_data[mapped] = v
-    rows = [row] if row else []
+                items.append((new_key, v))
+        return dict(items)
+    flat_data = flatten(data)
+    print("FLATTENED GEMINI DATA:", flat_data)
+    # Map fields
+    for k, v in flat_data.items():
+        norm_k = normalize_key(k)
+        # Handle reason_for_overtime as string or list
+        if norm_k == "reason_for_overtime":
+            if isinstance(v, str):
+                v = [v]
+            for reason in v:
+                reason_norm = normalize_key(reason)
+                if reason_norm in checkbox_map:
+                    form_data[checkbox_map[reason_norm]] = True
+        # Custom logic for ambiguous keys
+        elif norm_k == "pass":
+            if "superintendent_authorization" in k.lower():
+                form_data["superintendent_authorization_pass"] = v
+            else:
+                form_data["pass_number"] = v
+        elif norm_k == "date":
+            if "superintendent_authorization" in k.lower():
+                form_data["superintendent_authorization_date"] = v
+            elif "date_of_overtime" in k.lower():
+                form_data["date_of_overtime"] = v
+            elif form_type == 'supervisor':
+                form_data["todays_date"] = v
+            # else: do not map 'date' for hourly forms
+        elif norm_k == "job":
+            form_data["job_number"] = v
+        elif norm_k == "rc":
+            form_data["rc_number"] = v
+        elif norm_k == "report_loc":
+            form_data["report_loc"] = v
+        elif norm_k in key_map:
+            form_data[key_map[norm_k]] = v
+        elif norm_k in checkbox_map:
+            form_data[checkbox_map[norm_k]] = bool(v)
+        elif norm_k.startswith("reason_for_overtime_"):
+            # e.g. reason_for_overtime_rdo: True
+            reason = norm_k.replace("reason_for_overtime_", "")
+            if reason in checkbox_map:
+                form_data[checkbox_map[reason]] = bool(v)
+        else:
+            print(f"Unmapped Gemini key: {k} -> {v}")
+    print("FINAL FORM DATA:", form_data)
+
+    # For exception claim (hourly) forms, build a row if relevant fields are present
+    row_fields = [
+        "exception_code", "line_location", "run_no",
+        "exception_time_from_hh", "exception_time_from_mm",
+        "exception_time_to_hh", "exception_time_to_mm",
+        "overtime_hh", "overtime_mm",
+        "bonus_hh", "bonus_mm",
+        "nite_diff_hh", "nite_diff_mm",
+        "ta_job_no"
+    ]
+    row = {field: form_data.get(field, '') for field in row_fields}
+    # Only add row if at least code, location, and run_no are present
+    if row.get("exception_code") or row.get("line_location") or row.get("run_no"):
+        rows = [row]
+    else:
+        rows = []
     return form_data, rows
 
-@app.route("/upload", methods=["POST"])
-def upload_file():
-    print("Upload route called")
-    print("Files received:", request.files)
-    if "file" not in request.files:
-        print("No file uploaded")
-        return jsonify({"error": "No file uploaded"}), 400
+def is_blank_or_crossed_out(image_path):
+    # Simple blank/crossed-out detection: check if almost all pixels are white or if very little text is extracted
+    # You can improve this with OCR or more advanced image analysis
+    try:
+        from PIL import Image
+        img = Image.open(image_path).convert('L')
+        # Threshold: count non-white pixels
+        nonwhite = sum(1 for p in img.getdata() if p < 240)
+        if nonwhite < 1000:  # Tune this threshold as needed
+            return True
+    except Exception as e:
+        print(f"Error in blank/crossed-out detection: {e}")
+    return False
 
-    file = request.files["file"]
-    print(f"Received file: {file.filename}")
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+@app.route('/upload/hourly', methods=['POST'])
+def upload_hourly_file():
+    return handle_upload(form_type='hourly')
 
-    # Use Gemini to extract details
-    gemini_output = gemini_extract_file_details(filepath)
-    print("--- Gemini Output ---")
-    print(gemini_output)
-    print("--- END Gemini Output ---")
+@app.route('/upload/supervisor', methods=['POST'])
+def upload_supervisor_file():
+    return handle_upload(form_type='supervisor')
 
-    form_data, rows = clean_and_map_gemini_output(gemini_output) if gemini_output else ({}, [])
-    # If Gemini output was parsed, fill missing fields with 'N/A'
-    if form_data:
-        required_form_fields = [
-            'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
-            'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
-            'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status'
-        ]
-        for key in required_form_fields:
-            if key not in form_data:
-                form_data[key] = 'N/A'
-        # Always set status to 'processed' after upload
-        form_data['status'] = 'processed'
-        # For each row, fill missing fields with 'N/A'
-        required_row_fields = [
-            'code', 'code_description', 'line_location', 'run_no',
-            'exception_time_from_hh', 'exception_time_from_mm',
-            'exception_time_to_hh', 'exception_time_to_mm',
-            'overtime_hh', 'overtime_mm', 'bonus_hh', 'bonus_mm',
-            'nite_diff_hh', 'nite_diff_mm', 'ta_job_no'
-        ]
-        for row in rows:
-            for key in required_row_fields:
-                if key not in row:
-                    row[key] = 'N/A'
-    else:
-        # fallback if Gemini output could not be parsed
-        required_form_fields = [
-            'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
-            'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
-            'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status'
-        ]
-        form_data = {key: '' for key in required_form_fields}
-        form_data['comments'] = "Gemini output could not be parsed."
-        form_data['status'] = 'processed'
-        if not rows:
-            rows = []
+# Refactor the upload logic into a helper
 
-    # Ensure all required fields in each row
-    required_row_fields = [
-        'code', 'code_description', 'line_location', 'run_no',
-        'exception_time_from_hh', 'exception_time_from_mm',
-        'exception_time_to_hh', 'exception_time_to_mm',
-        'overtime_hh', 'overtime_mm', 'bonus_hh', 'bonus_mm',
-        'nite_diff_hh', 'nite_diff_mm', 'ta_job_no'
-    ]
-    for row in rows:
-        for key in required_row_fields:
-            if key not in row:
-                row[key] = ''
-    rows_fallback = [] # This variable is no longer used for the final rows list
+def handle_upload(form_type):
+    try:
+        files = request.files.getlist('files')
+        if not files:
+            # fallback for single file upload (old clients)
+            if 'file' in request.files:
+                files = [request.files['file']]
+            else:
+                return jsonify({'error': 'No file(s) part in the request.'}), 400
 
-    from db import store_exception_form
-    username = request.form.get('username') or request.args.get('username') or request.json.get('username') if request.is_json else None
-    if not username:
-        username = 'unknown'
-    store_exception_form(form_data, rows, username)
-    from db import log_audit
-    log_audit(username, 'upload', 'form', None, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
+        from db import store_exception_form, log_audit
+        username = request.form.get('username') or request.args.get('username') or (request.json.get('username') if request.is_json else None)
+        if not username:
+            username = 'unknown'
+        success = 0
+        failed = 0
+        for file in files:
+            if file.filename == '':
+                failed += 1
+                continue
+            try:
+                # Save files in subfolders by form_type
+                subfolder = form_type if form_type in ['hourly', 'supervisor'] else ''
+                target_folder = os.path.join(UPLOAD_FOLDER, subfolder) if subfolder else UPLOAD_FOLDER
+                os.makedirs(target_folder, exist_ok=True)
+                filepath = os.path.join(target_folder, file.filename)
+                file.save(filepath)
 
-    return jsonify({
-        "message": "Upload and save successful!",
-        "form": form_data,
-        "rows": rows,
-        "status": "processed"
-    })
+                # If supervisor and PDF, split each page into two halves and process each as a form
+                if form_type == 'supervisor' and file.filename.lower().endswith('.pdf'):
+                    with pdfplumber.open(filepath) as pdf:
+                        for i, page in enumerate(pdf.pages):
+                            img = page.to_image(resolution=300).original
+                            width, height = img.size
+                            # Top half
+                            top_half = img.crop((0, 0, width, height // 2))
+                            top_path = os.path.join(target_folder, f"{os.path.splitext(file.filename)[0]}_page{i+1}_top.png")
+                            top_half.save(top_path)
+                            # Bottom half
+                            bottom_half = img.crop((0, height // 2, width, height))
+                            bottom_path = os.path.join(target_folder, f"{os.path.splitext(file.filename)[0]}_page{i+1}_bottom.png")
+                            bottom_half.save(bottom_path)
+                            # Process each half
+                            for img_path in [top_path, bottom_path]:
+                                if is_blank_or_crossed_out(img_path):
+                                    print(f"Skipped blank/crossed-out form: {img_path}")
+                                    continue
+                                # Use Gemini to extract details
+                                gemini_output = gemini_extract_file_details(img_path)
+                                print("--- Gemini Output ---")
+                                print(gemini_output)
+                                print("--- END Gemini Output ---")
+                                form_data, rows = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ({}, [])
+                                # Always set file_name to the pass number if available, otherwise 'N/A'
+                                if form_data.get('pass_number'):
+                                    form_data['file_name'] = str(form_data['pass_number'])
+                                else:
+                                    form_data['file_name'] = 'N/A'
+                                if form_data:
+                                    required_form_fields = [
+                                        'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
+                                        'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
+                                        'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
+                                    ]
+                                    for key in required_form_fields:
+                                        if key not in form_data:
+                                            form_data[key] = 'N/A'
+                                    form_data['status'] = 'processed'
+                                else:
+                                    form_data = {key: '' for key in required_form_fields}
+                                    form_data['file_name'] = os.path.basename(img_path)
+                                    form_data['comments'] = f"Gemini extraction failed for {img_path}. Output: {gemini_output if gemini_output else 'None'}"
+                                    form_data['status'] = 'error'
+                                    if not rows:
+                                        rows = []
+                                upload_date = datetime.datetime.now().isoformat()
+                                form_id = store_exception_form(form_data, rows, username, form_type=form_type, upload_date=upload_date)
+                                if not form_id:
+                                    failed += 1
+                                    continue
+                                log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
+                                success += 1
+                    continue  # Skip the rest of the loop for supervisor PDFs
+
+                # Default: process as a single file (for hourly or non-PDF supervisor uploads)
+                gemini_output = gemini_extract_file_details(filepath)
+                print("--- Gemini Output ---")
+                print(gemini_output)
+                print("--- END Gemini Output ---")
+                form_data, rows = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ({}, [])
+                # Always set file_name to the uploaded file name
+                form_data['file_name'] = file.filename
+                if form_data:
+                    required_form_fields = [
+                        'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
+                        'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
+                        'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
+                    ]
+                    for key in required_form_fields:
+                        if key not in form_data:
+                            form_data[key] = 'N/A'
+                    form_data['status'] = 'processed'
+                else:
+                    form_data = {key: '' for key in required_form_fields}
+                    form_data['file_name'] = file.filename
+                    form_data['comments'] = f"Gemini extraction failed for {file.filename}. Output: {gemini_output if gemini_output else 'None'}"
+                    form_data['status'] = 'error'
+                    if not rows:
+                        rows = []
+                upload_date = datetime.datetime.now().isoformat()
+                form_id = store_exception_form(form_data, rows, username, form_type=form_type, upload_date=upload_date)
+                if not form_id:
+                    failed += 1
+                    continue
+                log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
+                success += 1
+            except Exception as e:
+                print(f"Error processing file {file.filename}: {e}")
+                failed += 1
+        return jsonify({'message': 'Batch upload complete', 'success': success, 'failed': failed})
+    except Exception as e:
+        print(f"Error in handle_upload: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # @app.route('/api/register', methods=['POST'])
 # def register():
@@ -260,30 +466,81 @@ def get_stats():
 
 @app.route('/api/dashboard', methods=['GET'])
 def get_dashboard_data():
+    def safe_int(val):
+        try:
+            return int(val)
+        except Exception:
+            return 0
     try:
+        form_type = request.args.get('form_type')
         username = request.args.get('username')
         with sqlite3.connect('forms.db', timeout=10) as conn:
             c = conn.cursor()
-            # Count all processed forms
-            c.execute('SELECT * FROM exception_forms WHERE status = "processed"')
+            # Filter by form_type if provided
+            if form_type:
+                c.execute('SELECT * FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
+            else:
+                c.execute('SELECT * FROM exception_forms WHERE status = "processed"')
             forms = c.fetchall()
             total_forms = len(forms)
 
-            # Get all rows for stats
-            c.execute('SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows')
+            # Supervisor-specific: Most common reason for overtime
+            most_common_reason = None
+            if form_type == 'supervisor' and total_forms > 0:
+                reason_fields = [
+                    'reason_rdo', 'reason_absentee_coverage', 'reason_no_lunch', 'reason_early_report',
+                    'reason_late_clear', 'reason_save_as_oto', 'reason_capital_support_go', 'reason_other'
+                ]
+                reason_counts = {field: 0 for field in reason_fields}
+                for form in forms:
+                    # Get column names
+                    if not 'form_columns' in locals():
+                        form_columns = [desc[0] for desc in c.description]
+                    form_dict = dict(zip(form_columns, form))
+                    for field in reason_fields:
+                        if form_dict.get(field):
+                            reason_counts[field] += 1
+                if any(reason_counts.values()):
+                    most_common_reason_field = max(reason_counts, key=lambda k: reason_counts[k])
+                    reason_label_map = {
+                        'reason_rdo': 'RDO',
+                        'reason_absentee_coverage': 'Absentee Coverage',
+                        'reason_no_lunch': 'No Lunch',
+                        'reason_early_report': 'Early Report',
+                        'reason_late_clear': 'Late Clear',
+                        'reason_save_as_oto': 'Save as OTO',
+                        'reason_capital_support_go': 'Capital Support / GO',
+                        'reason_other': 'Other'
+                    }
+                    most_common_reason = {
+                        'reason': reason_label_map.get(most_common_reason_field, most_common_reason_field),
+                        'count': reason_counts[most_common_reason_field]
+                    }
+                else:
+                    most_common_reason = {'reason': 'N/A', 'count': 0}
+
+            # Get all rows for stats, filtered by form_type
+            if form_type:
+                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
+                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ?)''', (form_type,))
+            else:
+                c.execute('SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows')
             rows = c.fetchall()
 
             # Overtime
-            total_minutes = sum(int(hh or 0) * 60 + int(mm or 0) for _, hh, mm, _, _ in rows)
+            total_minutes = sum(safe_int(hh) * 60 + safe_int(mm) for _, hh, mm, _, _ in rows)
             total_overtime_hh = total_minutes // 60
             total_overtime_mm = total_minutes % 60
 
             # Job numbers
-            job_numbers = [ta_job_no for _, _, _, ta_job_no, _ in rows if ta_job_no]
+            job_numbers = [ta_job_no for _, _, _, ta_job_no, _ in rows if ta_job_no and ta_job_no != 'N/A']
             unique_job_numbers = set(job_numbers)
 
             # Most relevant position (using title)
-            c.execute('SELECT title FROM exception_forms WHERE status = "processed"')
+            if form_type:
+                c.execute('SELECT title FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
+            else:
+                c.execute('SELECT title FROM exception_forms WHERE status = "processed"')
             titles = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
             most_position, most_position_count = ('N/A', 0)
             if titles:
@@ -291,14 +548,25 @@ def get_dashboard_data():
                 most_position, most_position_count = Counter(titles).most_common(1)[0]
 
             # Most relevant location
-            locations = [loc for _, _, _, _, loc in rows if loc]
-            most_location, most_location_count = ('N/A', 0)
-            if locations:
-                from collections import Counter
-                most_location, most_location_count = Counter(locations).most_common(1)[0]
+            if form_type == 'supervisor':
+                c.execute('SELECT report FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
+                reports = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
+                most_location, most_location_count = ('N/A', 0)
+                if reports:
+                    from collections import Counter
+                    most_location, most_location_count = Counter(reports).most_common(1)[0]
+            else:
+                locations = [loc for _, _, _, _, loc in rows if loc]
+                most_location, most_location_count = ('N/A', 0)
+                if locations:
+                    from collections import Counter
+                    most_location, most_location_count = Counter(locations).most_common(1)[0]
 
             # Forms table
-            c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status FROM exception_forms')
+            if form_type:
+                c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
+            else:
+                c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms')
             forms_table = [
                 {
                     "id": row[0],
@@ -308,12 +576,14 @@ def get_dashboard_data():
                     "actual_ot_date": row[4],
                     "div": row[5],
                     "comments": row[6],
-                    "status": row[7]
+                    "status": row[7],
+                    "form_type": row[8] if len(row) > 8 else '',
+                    "upload_date": row[9] if len(row) > 9 else '' # Add upload_date to the form data
                 }
                 for row in c.fetchall()
             ]
             conn.commit()
-        return jsonify({
+        result = {
             "total_forms": total_forms,
             "total_overtime": f"{total_overtime_hh}h {total_overtime_mm}m",
             "total_job_numbers": len(job_numbers),
@@ -321,7 +591,10 @@ def get_dashboard_data():
             "most_relevant_position": {"position": most_position, "count": most_position_count},
             "most_relevant_location": {"location": most_location, "count": most_location_count},
             "forms": forms_table
-        })
+        }
+        if form_type == 'supervisor':
+            result['most_common_reason'] = most_common_reason
+        return jsonify(result)
     except Exception as e:
         print(f"Error in dashboard: {e}")
         return jsonify({"error": str(e)}), 500
@@ -375,7 +648,12 @@ def update_form(form_id):
                 report = ?,
                 relief = ?,
                 todays_date = ?,
-                status = ?
+                status = ?,
+                reg = ?,
+                superintendent_authorization_signature = ?,
+                superintendent_authorization_pass = ?,
+                superintendent_authorization_date = ?,
+                entered_into_uts = ?
             WHERE id = ?
         ''', (
             form.get('pass_number', ''),
@@ -395,6 +673,11 @@ def update_form(form_id):
             form.get('relief', ''),
             form.get('todays_date', ''),
             form.get('status', ''),
+            form.get('reg', ''),
+            form.get('superintendent_authorization_signature', ''),
+            form.get('superintendent_authorization_pass', ''),
+            form.get('superintendent_authorization_date', ''),
+            form.get('entered_into_uts', ''),
             form_id
         ))
         # Delete old rows
@@ -449,117 +732,6 @@ def delete_form(form_id):
     except Exception as e:
         print(f"Error deleting form {form_id}: {e}")
         return jsonify({'error': str(e)}), 500
-
-def parse_exception_form(ocr_lines):
-    import re
-    form_data = {
-        'pass_number': '',
-        'title': '',
-        'employee_name': '',
-        'rdos': '',
-        'actual_ot_date': '',
-        'div': '',
-        'comments': '',
-        'supervisor_name': '',
-        'supervisor_pass_no': '',
-        'oto': '',
-        'oto_amount_saved': '',
-        'entered_in_uts': '',
-        'regular_assignment': '',
-        'report': '',
-        'relief': '',
-        'todays_date': ''
-    }
-    rows = []
-    # Pass 1: Look for header fields (unchanged)
-    for line in ocr_lines:
-        today_match = re.search(r"Today.?s Date[\s:]*([\d/]+)", line, re.IGNORECASE)
-        if today_match:
-            form_data['todays_date'] = today_match.group(1)
-        reg_match = re.search(r"Regular Assignment[\s:]*([A-Za-z0-9\- ]+)", line, re.IGNORECASE)
-        if reg_match:
-            form_data['regular_assignment'] = reg_match.group(1).strip()
-        report_match = re.search(r"Report[\s:]*([A-Za-z0-9\- ]+)", line, re.IGNORECASE)
-        if report_match:
-            form_data['report'] = report_match.group(1).strip()
-        relief_match = re.search(r"Relief[\s:]*([A-Za-z0-9\- ]+)", line, re.IGNORECASE)
-        if relief_match:
-            form_data['relief'] = relief_match.group(1).strip()
-        if 'Comments:' in line:
-            form_data['comments'] = line.split('Comments:')[-1].strip()
-        if 'Supv. Name' in line or 'Supervisor Name' in line:
-            name_match = re.search(r"(Supv\. Name|Supervisor Name)[^A-Za-z]*([A-Za-z .]+)", line)
-            if name_match:
-                form_data['supervisor_name'] = name_match.group(2).strip()
-        if 'Pass No.' in line and ('Supv.' in line or 'Supervisor' in line):
-            passno_match = re.search(r"Pass No\.?[\s:]*([0-9]+)", line)
-            if passno_match:
-                form_data['supervisor_pass_no'] = passno_match.group(1)
-        if 'OTO' in line and ('YES' in line or 'NO' in line):
-            oto_match = re.search(r"OTO.*?(YES|NO)", line)
-            if oto_match:
-                form_data['oto'] = oto_match.group(1)
-        if 'OTO AMOUNT SAVED' in line:
-            amt_match = re.search(r"OTO AMOUNT SAVED[^0-9]*([0-9]+)", line)
-            if amt_match:
-                form_data['oto_amount_saved'] = amt_match.group(1)
-        if 'Entered in UTS' in line:
-            form_data['entered_in_uts'] = 'YES'
-    # Pass 2: Improved extraction for main info line
-    for line in ocr_lines:
-        parts = line.split()
-        # Look for a line that starts with a number and has at least 6 parts
-        if len(parts) >= 6 and parts[0].isdigit():
-            form_data['pass_number'] = parts[0]
-            form_data['title'] = parts[1]
-            # Find where the name ends (before rdos/date/div)
-            # Assume rdos is the first part that looks like '5/5' or similar
-            name_end = 2
-            for i in range(2, len(parts)):
-                if re.match(r'\d+/\d+', parts[i]):
-                    break
-                name_end = i + 1
-            form_data['employee_name'] = ' '.join(parts[2:name_end])
-            # rdos, actual_ot_date, div are the last three parts
-            if len(parts) >= 3:
-                form_data['rdos'] = parts[-3]
-                form_data['actual_ot_date'] = parts[-2]
-                form_data['div'] = parts[-1]
-    # Pass 3: Table rows (unchanged)
-    for line in ocr_lines:
-        parts = line.split()
-        if len(parts) >= 10 and re.match(r'\d{2,4}', parts[0]):
-            row = {
-                'code': parts[0],
-                'code_description': exception_codes.get(parts[0], ''),
-                'line_location': parts[1] if len(parts) > 1 else '',
-                'run_no': parts[2] if len(parts) > 2 else '',
-                'exception_time_from_hh': parts[3] if len(parts) > 3 else '',
-                'exception_time_from_mm': parts[4] if len(parts) > 4 else '',
-                'exception_time_to_hh': parts[5] if len(parts) > 5 else '',
-                'exception_time_to_mm': parts[6] if len(parts) > 6 else '',
-                'overtime_hh': parts[7] if len(parts) > 7 else '',
-                'overtime_mm': parts[8] if len(parts) > 8 else '',
-                'bonus_hh': parts[9] if len(parts) > 9 else '',
-                'bonus_mm': parts[10] if len(parts) > 10 else '',
-                'nite_diff_hh': parts[11] if len(parts) > 11 else '',
-                'nite_diff_mm': parts[12] if len(parts) > 12 else '',
-                'ta_job_no': parts[13] if len(parts) > 13 else ''
-            }
-            rows.append(row)
-    print('--- Parsed Form Data ---')
-    print(form_data)
-    print('--- Parsed Rows ---')
-    print(rows)
-    return form_data, rows
-
-# Example usage after OCR:
-ocr_lines = [
-    # ...lines from your OCR output...
-]
-init_exception_form_db()
-form_data, rows = parse_exception_form(ocr_lines)
-store_exception_form(form_data, rows)
 
 def init_audit_db():
     with sqlite3.connect('forms.db', timeout=10) as conn:
@@ -654,3 +826,5 @@ def export_forms():
 if __name__ == "__main__":
     init_audit_db()
     app.run(port=8000, debug=True)
+
+    

@@ -5,83 +5,79 @@ const FormUpload = () => {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [formType, setFormType] = useState<'hourly' | 'supervisor'>('hourly');
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadError(null);
+    setUploadSuccess(null);
     if (!file) {
       alert('Please select a file first');
       return;
     }
-    
     setIsProcessing(true);
-    setResult('Processing form with AI...');
-    
-    // Simulate AI processing delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Generate random job data for testing
-    const jobPositions = ['Bus Operator', 'Train Conductor', 'Station Agent', 'Maintenance Worker', 'Supervisor'];
-    const randomJobPosition = jobPositions[Math.floor(Math.random() * jobPositions.length)];
-    const randomJobNumber = `TA-2024-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
-    
-    // Simulate extracted form data with all Exception Claim Form fields
-    const extractedData = {
-      passNumber: String(Math.floor(Math.random() * 99999999) + 10000000),
-      title: randomJobPosition,
-      employeeName: `Employee ${Math.floor(Math.random() * 100) + 1}`,
-      rdos: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][Math.floor(Math.random() * 5)],
-      actualOTDate: '2024-01-15',
-      div: `D${String(Math.floor(Math.random() * 99) + 1).padStart(2, '0')}`,
-      exceptionCode: `EXC-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`,
-      location: ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'][Math.floor(Math.random() * 5)],
-      runNo: `R${String(Math.floor(Math.random() * 99) + 1).padStart(3, '0')}`,
-      exceptionTimeFromHH: String(Math.floor(Math.random() * 12) + 8),
-      exceptionTimeFromMM: String(Math.floor(Math.random() * 60)),
-      exceptionTimeToHH: String(Math.floor(Math.random() * 12) + 16),
-      exceptionTimeToMM: String(Math.floor(Math.random() * 60)),
-      overtimeHH: String(Math.floor(Math.random() * 4) + 1),
-      overtimeMM: String(Math.floor(Math.random() * 60)),
-      bonusHH: String(Math.floor(Math.random() * 2)),
-      bonusMM: String(Math.floor(Math.random() * 60)),
-      niteDiffHH: String(Math.floor(Math.random() * 2)),
-      niteDiffMM: String(Math.floor(Math.random() * 60)),
-      taJobNo: randomJobNumber,
-      oto: Math.random() > 0.5 ? 'Yes' : 'No',
-      otoAmountSaved: `$${Math.floor(Math.random() * 200) + 50}.00`,
-      enteredInUTS: Math.random() > 0.3 ? 'Yes' : 'No',
-      comments: 'Emergency overtime due to weather conditions. Route was extended due to road closures.',
-      supervisorName: `Supervisor ${Math.floor(Math.random() * 100) + 1}`,
-      supervisorPassNo: String(Math.floor(Math.random() * 99999999) + 10000000)
-    };
-    
-    // Save complete form data to localStorage
-    const formData = {
-      id: Date.now().toString(),
-      fileName: file.name,
-      uploadDate: new Date().toISOString(),
-      status: 'processed',
-      ...extractedData
-    };
-    
-    const existingData = JSON.parse(localStorage.getItem('mtaForms') || '[]');
-    existingData.push(formData);
-    localStorage.setItem('mtaForms', JSON.stringify(existingData));
-    
-    setResult('Form processed successfully! All details extracted.');
+    setResult('Uploading file to server...');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      // Optionally, add username if you have auth context
+      // formData.append('username', user?.id || 'unknown');
+      const response = await fetch(`http://localhost:8000/upload/${formType}`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setUploadSuccess(data.message || 'Upload successful!');
+        setResult(null);
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 1500);
+      } else {
+        setUploadError(data.error || 'Upload failed.');
+        setResult(null);
+      }
+    } catch (err: any) {
+      setUploadError('Network or server error.');
+      setResult(null);
+    }
     setIsProcessing(false);
-    
-    setTimeout(() => {
-      navigate('/dashboard');
-    }, 1500);
   };
 
   return (
     <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg mt-10">
-      <h2 className="text-3xl font-extrabold text-gray-900 mb-2 text-center">Upload Exception Claim Form</h2>
+      <h2 className="text-3xl font-extrabold text-gray-900 mb-2 text-center">Upload Overtime Forms</h2>
       <p className="text-gray-500 text-center mb-8">Upload your form file and our AI will extract all the details automatically.</p>
       
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Form Type Selection */}
+        <div className="flex justify-center gap-4 mb-2">
+          <label>
+            <input
+              type="radio"
+              name="formType"
+              value="hourly"
+              checked={formType === 'hourly'}
+              onChange={() => setFormType('hourly')}
+              className="mr-1"
+            />
+            Hourly
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="formType"
+              value="supervisor"
+              checked={formType === 'supervisor'}
+              onChange={() => setFormType('supervisor')}
+              className="mr-1"
+            />
+            Supervisor
+          </label>
+        </div>
         {/* File Upload Section */}
         <div className="flex flex-col items-center justify-center gap-4 border-2 border-dashed border-gray-300 rounded-lg p-8 bg-gray-50 hover:border-blue-400 transition-colors">
           <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center">
@@ -122,10 +118,20 @@ const FormUpload = () => {
           </button>
         </div>
 
-        {/* Result Message */}
+        {/* Result/Error Message */}
         {result && (
+          <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-blue-800">{result}</p>
+          </div>
+        )}
+        {uploadSuccess && (
           <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-            <p className="text-green-800">{result}</p>
+            <p className="text-green-800">{uploadSuccess}</p>
+          </div>
+        )}
+        {uploadError && (
+          <div className="text-center p-4 bg-red-50 rounded-lg border border-red-200">
+            <p className="text-red-800">{uploadError}</p>
           </div>
         )}
       </form>

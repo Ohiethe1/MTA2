@@ -62,7 +62,12 @@ def init_exception_form_db():
             report TEXT,
             relief TEXT,
             todays_date TEXT,
-            status TEXT DEFAULT 'processed'
+            status TEXT DEFAULT 'processed',
+            reg TEXT,
+            superintendent_authorization_signature TEXT,
+            superintendent_authorization_pass TEXT,
+            superintendent_authorization_date TEXT,
+            entered_into_uts TEXT
         )
     ''')
     c.execute('''
@@ -153,37 +158,94 @@ def parse_exception_form(ocr_lines):
 
 # (Removed example usage block that called parse_exception_form and store_exception_form)
 
-def store_exception_form(form_data, rows, username=""):
-    conn = sqlite3.connect('forms.db')
-    c = conn.cursor()
-    # Only include fields present in form_data
-    form_fields = [
-        'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
-        'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
-        'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'username'
-    ]
-    insert_fields = [f for f in form_fields if f in form_data or f == 'username']
-    insert_values = [form_data.get(f, '') if f != 'username' else username for f in insert_fields]
-    placeholders = ', '.join(['?'] * len(insert_fields))
-    sql = f"INSERT INTO exception_forms ({', '.join(insert_fields)}) VALUES ({placeholders})"
-    c.execute(sql, insert_values)
-    form_id = c.lastrowid
-    # Insert rows if any
-    row_fields = [
-        'form_id', 'code', 'code_description', 'line_location', 'run_no',
-        'exception_time_from_hh', 'exception_time_from_mm',
-        'exception_time_to_hh', 'exception_time_to_mm',
-        'overtime_hh', 'overtime_mm', 'bonus_hh', 'bonus_mm',
-        'nite_diff_hh', 'nite_diff_mm', 'ta_job_no'
-    ]
-    for row in rows:
-        insert_row_fields = [f for f in row_fields if f == 'form_id' or f in row]
-        insert_row_values = [form_id if f == 'form_id' else row.get(f, '') for f in insert_row_fields]
-        row_placeholders = ', '.join(['?'] * len(insert_row_fields))
-        row_sql = f"INSERT INTO exception_form_rows ({', '.join(insert_row_fields)}) VALUES ({row_placeholders})"
-        c.execute(row_sql, insert_row_values)
-    conn.commit()
-    conn.close()
+def store_exception_form(form_data, rows, username, form_type=None, upload_date=None):
+    import sqlite3
+    with sqlite3.connect('forms.db', timeout=10) as conn:
+        c = conn.cursor()
+        # Ensure upload_date and form_type columns exist
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS exception_forms (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pass_number TEXT,
+                title TEXT,
+                employee_name TEXT,
+                rdos TEXT,
+                actual_ot_date TEXT,
+                div TEXT,
+                comments TEXT,
+                supervisor_name TEXT,
+                supervisor_pass_no TEXT,
+                oto TEXT,
+                oto_amount_saved TEXT,
+                entered_in_uts TEXT,
+                regular_assignment TEXT,
+                report TEXT,
+                relief TEXT,
+                todays_date TEXT,
+                status TEXT,
+                username TEXT,
+                ocr_lines TEXT,
+                form_type TEXT,
+                upload_date TEXT,
+                file_name TEXT,
+                reg TEXT,
+                superintendent_authorization_signature TEXT,
+                superintendent_authorization_pass TEXT,
+                superintendent_authorization_date TEXT,
+                entered_into_uts TEXT
+            )
+        """)
+        # Insert form with form_type and upload_date
+        c.execute('''
+            INSERT INTO exception_forms (
+                pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            form_data.get('pass_number', ''),
+            form_data.get('title', ''),
+            form_data.get('employee_name', ''),
+            form_data.get('rdos', ''),
+            form_data.get('actual_ot_date', ''),
+            form_data.get('div', ''),
+            form_data.get('comments', ''),
+            form_data.get('supervisor_name', ''),
+            form_data.get('supervisor_pass_no', ''),
+            form_data.get('oto', ''),
+            form_data.get('oto_amount_saved', ''),
+            form_data.get('entered_in_uts', ''),
+            form_data.get('regular_assignment', ''),
+            form_data.get('report', ''),
+            form_data.get('relief', ''),
+            form_data.get('todays_date', ''),
+            form_data.get('status', 'processed'),
+            username,
+            str(form_data.get('ocr_lines', '')),
+            form_type or '',
+            upload_date or '',
+            form_data.get('file_name', ''),
+            form_data.get('reg', ''),
+            form_data.get('superintendent_authorization_signature', ''),
+            form_data.get('superintendent_authorization_pass', ''),
+            form_data.get('superintendent_authorization_date', ''),
+            form_data.get('entered_into_uts', '')
+        ))
+        form_id = c.lastrowid
+        # Insert rows if any
+        row_fields = [
+            'form_id', 'code', 'code_description', 'line_location', 'run_no',
+            'exception_time_from_hh', 'exception_time_from_mm',
+            'exception_time_to_hh', 'exception_time_to_mm',
+            'overtime_hh', 'overtime_mm', 'bonus_hh', 'bonus_mm',
+            'nite_diff_hh', 'nite_diff_mm', 'ta_job_no'
+        ]
+        for row in rows:
+            insert_row_fields = [f for f in row_fields if f == 'form_id' or f in row]
+            insert_row_values = [form_id if f == 'form_id' else row.get(f, '') for f in insert_row_fields]
+            row_placeholders = ', '.join(['?'] * len(insert_row_fields))
+            row_sql = f"INSERT INTO exception_form_rows ({', '.join(insert_row_fields)}) VALUES ({row_placeholders})"
+            c.execute(row_sql, insert_row_values)
+        conn.commit()
+        return form_id
 
 def init_audit_db():
     conn = sqlite3.connect('forms.db')
