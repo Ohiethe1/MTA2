@@ -57,6 +57,7 @@ interface FilterState {
   title: string;
   location: string;
   jobNumber: string;
+  formType: string;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
@@ -80,7 +81,8 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
     passNumber: '',
     title: '',
     location: '',
-    jobNumber: ''
+    jobNumber: '',
+    formType: ''
   });
   const [showFilters, setShowFilters] = useState(false);
   const [isEditingRawJson, setIsEditingRawJson] = useState(false);
@@ -344,6 +346,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
     } else if (filterType === 'supervisor') {
       filteredForms = filteredForms.filter((form: any) => form.form_type === 'supervisor');
     }
+    // For general dashboard (no filterType), show all forms (both hourly and supervisor)
 
     // Apply search filter
     if (filters.search) {
@@ -421,6 +424,15 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       });
     }
 
+    // Apply form type filter (only for general dashboard)
+    if (!filterType && filters.formType) {
+      if (filters.formType === 'hourly') {
+        filteredForms = filteredForms.filter((form: any) => !form.form_type || form.form_type === 'hourly');
+      } else if (filters.formType === 'supervisor') {
+        filteredForms = filteredForms.filter((form: any) => form.form_type === 'supervisor');
+      }
+    }
+
     return filteredForms;
   };
 
@@ -478,12 +490,31 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       passNumber: '',
       title: '',
       location: '',
-      jobNumber: ''
+      jobNumber: '',
+      formType: ''
     });
   };
 
   const hasActiveFilters = () => {
     return Object.values(filters).some(value => value !== '');
+  };
+
+  // Helper to get form type label
+  const getFormTypeLabel = (form: any) => {
+    if (form.form_type === 'supervisor') {
+      return 'Supervisor';
+    } else {
+      return 'Hourly';
+    }
+  };
+
+  // Helper to get form type color
+  const getFormTypeColor = (form: any) => {
+    if (form.form_type === 'supervisor') {
+      return 'bg-purple-100 text-purple-800';
+    } else {
+      return 'bg-blue-100 text-blue-800';
+    }
   };
 
   // Remove getFilteredProcessedForms and use filteredForms for table only
@@ -612,6 +643,9 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                       if (!dashboard?.forms) return '';
                       const supervisorCount = dashboard.forms.filter((f: any) => f.form_type === 'supervisor').length;
                       const hourlyCount = dashboard.forms.filter((f: any) => !f.form_type || f.form_type === 'hourly').length;
+                      if (!filterType) {
+                        return `(${hourlyCount} hourly, ${supervisorCount} supervisor)`;
+                      }
                       return supervisorCount > hourlyCount ? '(supervisor)' : '(hourly employees)';
                     })()}
                   </div>
@@ -853,6 +887,22 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         {showFilters && (
           <div className="px-8 py-6 border-b border-gray-200 bg-gray-50">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Form Type Filter (only show in general dashboard) */}
+              {!filterType && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Form Type</label>
+                  <select
+                    value={filters.formType}
+                    onChange={e => handleFilterChange('formType', e.target.value)}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  >
+                    <option value="">All Form Types</option>
+                    <option value="hourly">Hourly</option>
+                    <option value="supervisor">Supervisor</option>
+                  </select>
+                </div>
+              )}
+
               {/* Status Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
@@ -975,6 +1025,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
               <tr>
                 <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">File Name</th>
                 <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Upload Date</th>
+                <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Form Type</th>
                 <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Status</th>
                 <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Actions</th>
               </tr>
@@ -987,6 +1038,11 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                   </td>
                   <td className="px-8 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-600">{formatUploadDate(form.upload_date)}</div>
+                  </td>
+                  <td className="px-8 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-3 py-1 text-xs font-bold rounded-full ${getFormTypeColor(form)}`}>
+                      {getFormTypeLabel(form)}
+                    </span>
                   </td>
                   <td className="px-8 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-3 py-1 text-xs font-bold rounded-full ${getStatusColor(form.status)}`}>
@@ -1009,7 +1065,13 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-xl font-semibold text-gray-800">Form Details</h3>
+              <h3 className="text-xl font-semibold text-gray-800">
+                Form Details {selectedFormDetails?.form?.form_type && (
+                  <span className={`ml-2 px-2 py-1 text-sm rounded-full ${selectedFormDetails.form.form_type === 'supervisor' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                    {selectedFormDetails.form.form_type === 'supervisor' ? 'Supervisor' : 'Hourly'}
+                  </span>
+                )}
+              </h3>
               <button
                 onClick={closeDetailsModal}
                 className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
@@ -1026,7 +1088,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 <>
 
                   {/* Hourly Exception Form Details (View Mode) */}
-                  {filterType === 'hourly' && !isEditing && selectedFormDetails && selectedFormDetails.form && (
+                  {(filterType === 'hourly' || (!filterType && selectedFormDetails.form.form_type !== 'supervisor')) && !isEditing && selectedFormDetails && selectedFormDetails.form && (
                     <div className="mb-4">
                       <div className="flex justify-between items-center mb-4">
                         <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Hourly Exception Claim Form Info</h4>
@@ -1084,7 +1146,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                   )}
 
 
-                  {filterType === 'supervisor' && selectedFormDetails && selectedFormDetails.form && (
+                  {(filterType === 'supervisor' || (!filterType && selectedFormDetails.form.form_type === 'supervisor')) && selectedFormDetails && selectedFormDetails.form && (
                     <div className="mb-6">
                       {/* Supervisor Form Details (View Mode) */}
                       <div className="mb-6">
@@ -1189,7 +1251,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
               </button>
             </div>
             <div className="p-6">
-              {filterType === 'hourly' && (
+              {(filterType === 'hourly' || (!filterType && editForm.form_type !== 'supervisor')) && (
                 <div className="space-y-6">
                   {/* Hourly Form Edit Fields */}
                   <div>
@@ -1344,7 +1406,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               )}
 
-              {filterType === 'supervisor' && (
+              {(filterType === 'supervisor' || (!filterType && editForm.form_type === 'supervisor')) && (
                 <div className="space-y-6">
                   {/* Supervisor Form Edit Fields */}
                   <div>

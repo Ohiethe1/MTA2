@@ -653,20 +653,13 @@ def get_dashboard_data():
                 else:
                     most_common_reason = {'reason': 'N/A', 'count': 0}
 
-            # Get all rows for stats, filtered by form_type
-            if form_type:
-                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
-                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ?)''', (form_type,))
-            else:
-                c.execute('SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows')
-            rows = c.fetchall()
-
             # Overtime calculation - handle differently for supervisor vs hourly forms
+            total_minutes = 0
+            
             if form_type == 'supervisor':
                 # For supervisor forms, get overtime from the overtime_hours field
                 c.execute('SELECT overtime_hours FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
                 overtime_entries = c.fetchall()
-                total_minutes = 0
                 for (overtime_hours,) in overtime_entries:
                     if overtime_hours and overtime_hours != 'N/A':
                         try:
@@ -679,18 +672,68 @@ def get_dashboard_data():
                                 total_minutes += int(overtime_hours) * 60
                         except:
                             continue
-            else:
+            elif form_type == 'hourly':
                 # For hourly forms, calculate from rows
+                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
+                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ? OR f.form_type IS NULL)''', (form_type,))
+                rows = c.fetchall()
                 total_minutes = sum(safe_int(hh) * 60 + safe_int(mm) for _, hh, mm, _, _ in rows)
+            else:
+                # For general dashboard (no form_type), combine both hourly and supervisor overtime
+                # Get supervisor overtime
+                c.execute('SELECT overtime_hours FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
+                supervisor_overtime_entries = c.fetchall()
+                for (overtime_hours,) in supervisor_overtime_entries:
+                    if overtime_hours and overtime_hours != 'N/A':
+                        try:
+                            if ':' in str(overtime_hours):
+                                hours, minutes = str(overtime_hours).split(':')
+                                total_minutes += int(hours) * 60 + int(minutes)
+                            else:
+                                total_minutes += int(overtime_hours) * 60
+                        except:
+                            continue
+                
+                # Get hourly overtime
+                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
+                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL)''')
+                hourly_rows = c.fetchall()
+                total_minutes += sum(safe_int(hh) * 60 + safe_int(mm) for _, hh, mm, _, _ in hourly_rows)
             
             total_overtime_hh = total_minutes // 60
             total_overtime_mm = total_minutes % 60
 
-            # Job numbers
-            job_numbers = [ta_job_no for _, _, _, ta_job_no, _ in rows if ta_job_no and ta_job_no != 'N/A']
+            # Job numbers - handle differently for different form types
+            job_numbers = []
+            if form_type == 'supervisor':
+                # For supervisor forms, get job numbers from the job_number field
+                c.execute('SELECT job_number FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
+                supervisor_jobs = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
+                job_numbers.extend(supervisor_jobs)
+            elif form_type == 'hourly':
+                # For hourly forms, get job numbers from rows
+                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
+                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ? OR f.form_type IS NULL)''', (form_type,))
+                rows = c.fetchall()
+                hourly_jobs = [ta_job_no for _, _, _, ta_job_no, _ in rows if ta_job_no and ta_job_no != 'N/A']
+                job_numbers.extend(hourly_jobs)
+            else:
+                # For general dashboard, combine both
+                # Get supervisor job numbers
+                c.execute('SELECT job_number FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
+                supervisor_jobs = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
+                job_numbers.extend(supervisor_jobs)
+                
+                # Get hourly job numbers
+                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
+                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL)''')
+                hourly_rows = c.fetchall()
+                hourly_jobs = [ta_job_no for _, _, _, ta_job_no, _ in hourly_rows if ta_job_no and ta_job_no != 'N/A']
+                job_numbers.extend(hourly_jobs)
+            
             unique_job_numbers = set(job_numbers)
 
-            # Most relevant position (using title)
+            # Most relevant position (using title) - handle all form types
             if form_type:
                 c.execute('SELECT title FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
             else:
@@ -701,27 +744,45 @@ def get_dashboard_data():
                 from collections import Counter
                 most_position, most_position_count = Counter(titles).most_common(1)[0]
 
-            # Most relevant location
+            # Most relevant location - handle all form types
+            locations = []
             if form_type == 'supervisor':
                 # For supervisor forms, use report_loc or overtime_location
                 c.execute('SELECT report_loc, overtime_location FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
                 location_entries = c.fetchall()
-                locations = []
                 for report_loc, overtime_location in location_entries:
                     if report_loc and report_loc != 'N/A':
                         locations.append(report_loc)
                     elif overtime_location and overtime_location != 'N/A':
                         locations.append(overtime_location)
-                most_location, most_location_count = ('N/A', 0)
-                if locations:
-                    from collections import Counter
-                    most_location, most_location_count = Counter(locations).most_common(1)[0]
+            elif form_type == 'hourly':
+                # For hourly forms, use line_location from rows
+                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
+                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ? OR f.form_type IS NULL)''', (form_type,))
+                rows = c.fetchall()
+                locations = [loc for _, _, _, _, loc in rows if loc and loc != 'N/A']
             else:
-                locations = [loc for _, _, _, _, loc in rows if loc]
-                most_location, most_location_count = ('N/A', 0)
-                if locations:
-                    from collections import Counter
-                    most_location, most_location_count = Counter(locations).most_common(1)[0]
+                # For general dashboard, combine both
+                # Get supervisor locations
+                c.execute('SELECT report_loc, overtime_location FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
+                supervisor_location_entries = c.fetchall()
+                for report_loc, overtime_location in supervisor_location_entries:
+                    if report_loc and report_loc != 'N/A':
+                        locations.append(report_loc)
+                    elif overtime_location and overtime_location != 'N/A':
+                        locations.append(overtime_location)
+                
+                # Get hourly locations
+                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
+                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL)''')
+                hourly_rows = c.fetchall()
+                hourly_locations = [loc for _, _, _, _, loc in hourly_rows if loc and loc != 'N/A']
+                locations.extend(hourly_locations)
+            
+            most_location, most_location_count = ('N/A', 0)
+            if locations:
+                from collections import Counter
+                most_location, most_location_count = Counter(locations).most_common(1)[0]
 
             # Forms table
             if form_type:
