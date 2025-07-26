@@ -62,6 +62,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const [search, setSearch] = useState('');
   const [isEditingRawJson, setIsEditingRawJson] = useState(false);
   const [rawJsonEdit, setRawJsonEdit] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
   // const { user } = useAuth ? useAuth() : { user: null };
 
   useEffect(() => {
@@ -180,7 +181,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const handleEdit = () => {
     setEditForm({ ...selectedFormDetails.form });
     setEditRows(selectedFormDetails.rows.map((row: any) => ({ ...row })));
-    setIsEditing(true);
+    setShowEditModal(true);
   };
 
   const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -208,7 +209,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         const detailsRes = await fetch(`http://localhost:8000/api/form/${editForm.id}`);
         const detailsData = await detailsRes.json();
         setSelectedFormDetails(detailsData);
-        setIsEditing(false);
+        setShowEditModal(false);
         // Re-fetch dashboard data to update the table
         let url = 'http://localhost:8000/api/dashboard';
         if (filterType === 'hourly') {
@@ -231,7 +232,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   };
 
   const handleCancelEdit = () => {
-    setIsEditing(false);
+    setShowEditModal(false);
     setSaveError('');
   };
 
@@ -736,31 +737,19 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 <div className="text-red-600">{detailsError}</div>
               ) : (
                 <>
-                  {isEditing && filterType === 'hourly' && editForm && (
-                    <div className="mb-4">
-                      <h4 className="font-semibold text-gray-800 text-lg border-b pb-2 mb-2">Hourly Exception Claim Form Info</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-2">
-                        <div><span className="font-medium">Regular Assignment:</span> <input name="regular_assignment" value={editForm.regular_assignment || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">Report:</span> <input name="report" value={editForm.report || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">Relief:</span> <input name="relief" value={editForm.relief || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">Today's Date:</span> <input name="todays_date" value={editForm.todays_date || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">Pass Number:</span> <input name="pass_number" value={editForm.pass_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">Title:</span> <input name="title" value={editForm.title || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">Employee Name:</span> <input name="employee_name" value={editForm.employee_name || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">RDOS:</span> <input name="rdos" value={editForm.rdos || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">Actual OT Date:</span> <input name="actual_ot_date" value={editForm.actual_ot_date || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                        <div><span className="font-medium">DIV:</span> <input name="div" value={editForm.div || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                      </div>
-                      <div className="mb-2">
-                        <span className="font-medium">Comments:</span>
-                        <textarea name="comments" value={editForm.comments || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full mt-1" rows={2} />
-                      </div>
-                    </div>
-                  )}
+
                   {/* Hourly Exception Form Details (View Mode) */}
                   {filterType === 'hourly' && !isEditing && selectedFormDetails && selectedFormDetails.form && (
                     <div className="mb-4">
-                      <h4 className="font-semibold text-gray-800 text-lg border-b pb-2 mb-2">Hourly Exception Claim Form Info</h4>
+                      <div className="flex justify-between items-center mb-4">
+                        <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Hourly Exception Claim Form Info</h4>
+                        <button
+                          onClick={handleEdit}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                        >
+                          Edit Form
+                        </button>
+                      </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-2">
                         <div><span className="font-medium">Regular Assignment:</span> {selectedFormDetails.form.regular_assignment || 'N/A'}</div>
                         <div><span className="font-medium">Report:</span> {selectedFormDetails.form.report || 'N/A'}</div>
@@ -798,6 +787,8 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                           ))}
                         </div>
                       )}
+                      
+
                     </div>
                   )}
                   {/* If no fields extracted */}
@@ -808,165 +799,75 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
 
                   {filterType === 'supervisor' && selectedFormDetails && selectedFormDetails.form && (
                     <div className="mb-6">
-                      {/* Supervisor Form Details (Editable Display) */}
+                      {/* Supervisor Form Details (View Mode) */}
                       <div className="mb-6">
                         <div className="flex justify-between items-center mb-4">
                           <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Supervisor Overtime Authorization Details</h4>
-                          {!isEditing && (
-                            <button
-                              onClick={handleEdit}
-                              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
-                            >
-                              Edit Form
-                            </button>
-                          )}
+                          <button
+                            onClick={handleEdit}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                          >
+                            Edit Form
+                          </button>
                         </div>
                         
-                        {isEditing ? (
-                          // Edit Mode
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                              <div><span className="font-medium">Regular Assignment:</span> <input name="reg" value={editForm.reg || editForm.regular_assignment || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Pass Number:</span> <input name="pass_number" value={editForm.pass_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Title:</span> <input name="title" value={editForm.title || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Employee Name:</span> <input name="employee_name" value={editForm.employee_name || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Job Number:</span> <input name="job_number" value={editForm.job_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">RC Number:</span> <input name="rc_number" value={editForm.rc_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Report Location:</span> <input name="report_loc" value={editForm.report_loc || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Overtime Location:</span> <input name="overtime_location" value={editForm.overtime_location || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Report Time:</span> <input name="report_time" value={editForm.report_time || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Relief Time:</span> <input name="relief_time" value={editForm.relief_time || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Date of Overtime:</span> <input name="date_of_overtime" value={editForm.date_of_overtime || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Overtime Hours:</span> <input name="overtime_hours" value={editForm.overtime_hours || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Account Number:</span> <input name="acct_number" value={editForm.acct_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Entered into UTS:</span> <input name="entered_into_uts" value={editForm.entered_into_uts || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">RDOS:</span> <input name="rdos" value={editForm.rdos || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                              <div><span className="font-medium">Today's Date:</span> <input name="todays_date" value={editForm.todays_date || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            </div>
-                            
-                            {/* Reason for Overtime - Edit Mode */}
-                            <div>
-                              <span className="font-medium">Reason for Overtime:</span>
-                              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_rdo || false} onChange={(e) => setEditForm({...editForm, reason_rdo: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">RDO</span>
-                                </label>
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_absentee_coverage || false} onChange={(e) => setEditForm({...editForm, reason_absentee_coverage: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">Absentee Coverage</span>
-                                </label>
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_no_lunch || false} onChange={(e) => setEditForm({...editForm, reason_no_lunch: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">No Lunch</span>
-                                </label>
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_early_report || false} onChange={(e) => setEditForm({...editForm, reason_early_report: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">Early Report</span>
-                                </label>
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_late_clear || false} onChange={(e) => setEditForm({...editForm, reason_late_clear: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">Late Clear</span>
-                                </label>
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_save_as_oto || false} onChange={(e) => setEditForm({...editForm, reason_save_as_oto: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">Save as OTO</span>
-                                </label>
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_capital_support_go || false} onChange={(e) => setEditForm({...editForm, reason_capital_support_go: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">Capital Support/GO</span>
-                                </label>
-                                <label className="flex items-center space-x-2">
-                                  <input type="checkbox" checked={editForm.reason_other || false} onChange={(e) => setEditForm({...editForm, reason_other: e.target.checked})} className="rounded" />
-                                  <span className="text-sm">Other</span>
-                                </label>
+                        {/* View Mode */}
+                        <div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                            <div><span className="font-medium">Regular Assignment:</span> {selectedFormDetails.form.reg || selectedFormDetails.form.regular_assignment || 'N/A'}</div>
+                            <div><span className="font-medium">Pass Number:</span> {selectedFormDetails.form.pass_number || 'N/A'}</div>
+                            <div><span className="font-medium">Title:</span> {selectedFormDetails.form.title || 'N/A'}</div>
+                            <div><span className="font-medium">Employee Name:</span> {selectedFormDetails.form.employee_name || 'N/A'}</div>
+                            <div><span className="font-medium">Job Number:</span> {selectedFormDetails.form.job_number || 'N/A'}</div>
+                            <div><span className="font-medium">RC Number:</span> {selectedFormDetails.form.rc_number || 'N/A'}</div>
+                            <div><span className="font-medium">Report Location:</span> {selectedFormDetails.form.report_loc || 'N/A'}</div>
+                            <div><span className="font-medium">Overtime Location:</span> {selectedFormDetails.form.overtime_location || 'N/A'}</div>
+                            <div><span className="font-medium">Report Time:</span> {selectedFormDetails.form.report_time || 'N/A'}</div>
+                            <div><span className="font-medium">Relief Time:</span> {selectedFormDetails.form.relief_time || 'N/A'}</div>
+                            <div><span className="font-medium">Date of Overtime:</span> {selectedFormDetails.form.date_of_overtime || 'N/A'}</div>
+                            <div><span className="font-medium">Overtime Hours:</span> {selectedFormDetails.form.overtime_hours || 'N/A'}</div>
+                            <div><span className="font-medium">Account Number:</span> {selectedFormDetails.form.acct_number || 'N/A'}</div>
+                            <div><span className="font-medium">Entered into UTS:</span> {selectedFormDetails.form.entered_into_uts || 'N/A'}</div>
+                            <div><span className="font-medium">RDOS:</span> {selectedFormDetails.form.rdos || 'N/A'}</div>
+                            <div><span className="font-medium">Today's Date:</span> {selectedFormDetails.form.todays_date || 'N/A'}</div>
+                          </div>
+                          
+                          {/* Reason for Overtime - View Mode */}
+                          <div className="mb-4">
+                            <span className="font-medium">Reason for Overtime:</span>
+                            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_rdo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                RDO {selectedFormDetails.form.reason_rdo ? '✓' : '✗'}
+                              </div>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_absentee_coverage ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Absentee Coverage {selectedFormDetails.form.reason_absentee_coverage ? '✓' : '✗'}
+                              </div>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_no_lunch ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                No Lunch {selectedFormDetails.form.reason_no_lunch ? '✓' : '✗'}
+                              </div>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_early_report ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Early Report {selectedFormDetails.form.reason_early_report ? '✓' : '✗'}
+                              </div>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_late_clear ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Late Clear {selectedFormDetails.form.reason_late_clear ? '✓' : '✗'}
+                              </div>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_save_as_oto ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Save as OTO {selectedFormDetails.form.reason_save_as_oto ? '✓' : '✗'}
+                              </div>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_capital_support_go ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Capital Support/GO {selectedFormDetails.form.reason_capital_support_go ? '✓' : '✗'}
+                              </div>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_other ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Other {selectedFormDetails.form.reason_other ? '✓' : '✗'}
                               </div>
                             </div>
-                            
-                            <div>
-                              <span className="font-medium">Comments:</span>
-                              <textarea name="comments" value={editForm.comments || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full mt-1" rows={3} />
-                            </div>
-                            
-                            {/* Edit Action Buttons */}
-                            {saveError && (
-                              <div className="text-red-600 text-sm">{saveError}</div>
-                            )}
-                            <div className="flex gap-3 pt-4">
-                              <button
-                                onClick={handleSaveEdit}
-                                className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 shadow-sm"
-                                disabled={saveLoading}
-                              >
-                                {saveLoading ? 'Saving...' : 'Save Changes'}
-                              </button>
-                              <button
-                                onClick={handleCancelEdit}
-                                className="bg-gray-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors shadow-sm"
-                              >
-                                Cancel
-                              </button>
-                            </div>
                           </div>
-                        ) : (
-                          // View Mode
-                          <div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                              <div><span className="font-medium">Regular Assignment:</span> {selectedFormDetails.form.reg || selectedFormDetails.form.regular_assignment || 'N/A'}</div>
-                              <div><span className="font-medium">Pass Number:</span> {selectedFormDetails.form.pass_number || 'N/A'}</div>
-                              <div><span className="font-medium">Title:</span> {selectedFormDetails.form.title || 'N/A'}</div>
-                              <div><span className="font-medium">Employee Name:</span> {selectedFormDetails.form.employee_name || 'N/A'}</div>
-                              <div><span className="font-medium">Job Number:</span> {selectedFormDetails.form.job_number || 'N/A'}</div>
-                              <div><span className="font-medium">RC Number:</span> {selectedFormDetails.form.rc_number || 'N/A'}</div>
-                              <div><span className="font-medium">Report Location:</span> {selectedFormDetails.form.report_loc || 'N/A'}</div>
-                              <div><span className="font-medium">Overtime Location:</span> {selectedFormDetails.form.overtime_location || 'N/A'}</div>
-                              <div><span className="font-medium">Report Time:</span> {selectedFormDetails.form.report_time || 'N/A'}</div>
-                              <div><span className="font-medium">Relief Time:</span> {selectedFormDetails.form.relief_time || 'N/A'}</div>
-                              <div><span className="font-medium">Date of Overtime:</span> {selectedFormDetails.form.date_of_overtime || 'N/A'}</div>
-                              <div><span className="font-medium">Overtime Hours:</span> {selectedFormDetails.form.overtime_hours || 'N/A'}</div>
-                              <div><span className="font-medium">Account Number:</span> {selectedFormDetails.form.acct_number || 'N/A'}</div>
-                              <div><span className="font-medium">Entered into UTS:</span> {selectedFormDetails.form.entered_into_uts || 'N/A'}</div>
-                              <div><span className="font-medium">RDOS:</span> {selectedFormDetails.form.rdos || 'N/A'}</div>
-                              <div><span className="font-medium">Today's Date:</span> {selectedFormDetails.form.todays_date || 'N/A'}</div>
-                            </div>
-                            
-                            {/* Reason for Overtime - View Mode */}
-                            <div className="mb-4">
-                              <span className="font-medium">Reason for Overtime:</span>
-                              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_rdo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  RDO {selectedFormDetails.form.reason_rdo ? '✓' : '✗'}
-                                </div>
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_absentee_coverage ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  Absentee Coverage {selectedFormDetails.form.reason_absentee_coverage ? '✓' : '✗'}
-                                </div>
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_no_lunch ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  No Lunch {selectedFormDetails.form.reason_no_lunch ? '✓' : '✗'}
-                                </div>
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_early_report ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  Early Report {selectedFormDetails.form.reason_early_report ? '✓' : '✗'}
-                                </div>
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_late_clear ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  Late Clear {selectedFormDetails.form.reason_late_clear ? '✓' : '✗'}
-                                </div>
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_save_as_oto ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  Save as OTO {selectedFormDetails.form.reason_save_as_oto ? '✓' : '✗'}
-                                </div>
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_capital_support_go ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  Capital Support/GO {selectedFormDetails.form.reason_capital_support_go ? '✓' : '✗'}
-                                </div>
-                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_other ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                  Other {selectedFormDetails.form.reason_other ? '✓' : '✗'}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="mb-4">
-                              <span className="font-medium">Comments:</span>
-                              <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem] mt-1">{selectedFormDetails.form.comments || 'N/A'}</div>
-                            </div>
+                          
+                          <div className="mb-4">
+                            <span className="font-medium">Comments:</span>
+                            <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem] mt-1">{selectedFormDetails.form.comments || 'N/A'}</div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -980,6 +881,272 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-xl font-semibold text-gray-800">
+                {filterType === 'hourly' ? 'Edit Hourly Exception Form' : 'Edit Supervisor Overtime Form'}
+              </h3>
+              <button
+                onClick={handleCancelEdit}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              {filterType === 'hourly' && (
+                <div className="space-y-6">
+                  {/* Hourly Form Edit Fields */}
+                  <div>
+                    <h4 className="font-semibold text-gray-800 text-lg border-b pb-2 mb-4">Hourly Exception Claim Form Info</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                      <div><span className="font-medium">Regular Assignment:</span> <input name="regular_assignment" value={editForm.regular_assignment || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Report:</span> <input name="report" value={editForm.report || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Relief:</span> <input name="relief" value={editForm.relief || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Today's Date:</span> <input name="todays_date" value={editForm.todays_date || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Pass Number:</span> <input name="pass_number" value={editForm.pass_number || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Title:</span> <input name="title" value={editForm.title || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Employee Name:</span> <input name="employee_name" value={editForm.employee_name || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">RDOS:</span> <input name="rdos" value={editForm.rdos || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Actual OT Date:</span> <input name="actual_ot_date" value={editForm.actual_ot_date || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">DIV:</span> <input name="div" value={editForm.div || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                    </div>
+                    <div className="mb-4">
+                      <span className="font-medium">Comments:</span>
+                      <textarea name="comments" value={editForm.comments || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full mt-1" rows={3} />
+                    </div>
+                  </div>
+
+                  {/* Hourly Overtime Time Details Edit */}
+                  {editRows && editRows.length > 0 && (
+                    <div>
+                      <h5 className="font-semibold text-gray-800 text-md border-b pb-2 mb-4">Overtime Time Details</h5>
+                      {editRows.map((row: any, index: number) => (
+                        <div key={index} className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="font-medium">Line/Location:</span>
+                              <input 
+                                value={row.line_location || ''} 
+                                onChange={(e) => handleEditRowChange(index, 'line_location', e.target.value)}
+                                className="border rounded p-2 w-full mt-1" 
+                              />
+                            </div>
+                            <div>
+                              <span className="font-medium">Run No.:</span>
+                              <input 
+                                value={row.run_no || ''} 
+                                onChange={(e) => handleEditRowChange(index, 'run_no', e.target.value)}
+                                className="border rounded p-2 w-full mt-1" 
+                              />
+                            </div>
+                            <div>
+                              <span className="font-medium">Exception Time From:</span>
+                              <div className="flex gap-1 mt-1">
+                                <input 
+                                  value={row.exception_time_from_hh || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'exception_time_from_hh', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="HH"
+                                />
+                                <span className="self-center">:</span>
+                                <input 
+                                  value={row.exception_time_from_mm || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'exception_time_from_mm', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="MM"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium">Exception Time To:</span>
+                              <div className="flex gap-1 mt-1">
+                                <input 
+                                  value={row.exception_time_to_hh || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'exception_time_to_hh', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="HH"
+                                />
+                                <span className="self-center">:</span>
+                                <input 
+                                  value={row.exception_time_to_mm || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'exception_time_to_mm', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="MM"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium">Overtime:</span>
+                              <div className="flex gap-1 mt-1">
+                                <input 
+                                  value={row.overtime_hh || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'overtime_hh', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="HH"
+                                />
+                                <span className="self-center">h</span>
+                                <input 
+                                  value={row.overtime_mm || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'overtime_mm', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="MM"
+                                />
+                                <span className="self-center">m</span>
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium">Bonus:</span>
+                              <div className="flex gap-1 mt-1">
+                                <input 
+                                  value={row.bonus_hh || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'bonus_hh', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="HH"
+                                />
+                                <span className="self-center">h</span>
+                                <input 
+                                  value={row.bonus_mm || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'bonus_mm', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="MM"
+                                />
+                                <span className="self-center">m</span>
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium">Night Differential:</span>
+                              <div className="flex gap-1 mt-1">
+                                <input 
+                                  value={row.nite_diff_hh || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'nite_diff_hh', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="HH"
+                                />
+                                <span className="self-center">h</span>
+                                <input 
+                                  value={row.nite_diff_mm || ''} 
+                                  onChange={(e) => handleEditRowChange(index, 'nite_diff_mm', e.target.value)}
+                                  className="border rounded p-2 w-16 text-center" 
+                                  placeholder="MM"
+                                />
+                                <span className="self-center">m</span>
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium">TA Job No.:</span>
+                              <input 
+                                value={row.ta_job_no || ''} 
+                                onChange={(e) => handleEditRowChange(index, 'ta_job_no', e.target.value)}
+                                className="border rounded p-2 w-full mt-1" 
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {filterType === 'supervisor' && (
+                <div className="space-y-6">
+                  {/* Supervisor Form Edit Fields */}
+                  <div>
+                    <h4 className="font-semibold text-gray-800 text-lg border-b pb-2 mb-4">Supervisor Overtime Authorization Details</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                      <div><span className="font-medium">Regular Assignment:</span> <input name="reg" value={editForm.reg || editForm.regular_assignment || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Pass Number:</span> <input name="pass_number" value={editForm.pass_number || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Title:</span> <input name="title" value={editForm.title || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Employee Name:</span> <input name="employee_name" value={editForm.employee_name || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Job Number:</span> <input name="job_number" value={editForm.job_number || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">RC Number:</span> <input name="rc_number" value={editForm.rc_number || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Report Location:</span> <input name="report_loc" value={editForm.report_loc || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Overtime Location:</span> <input name="overtime_location" value={editForm.overtime_location || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Report Time:</span> <input name="report_time" value={editForm.report_time || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Relief Time:</span> <input name="relief_time" value={editForm.relief_time || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Date of Overtime:</span> <input name="date_of_overtime" value={editForm.date_of_overtime || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Overtime Hours:</span> <input name="overtime_hours" value={editForm.overtime_hours || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Account Number:</span> <input name="acct_number" value={editForm.acct_number || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Entered into UTS:</span> <input name="entered_into_uts" value={editForm.entered_into_uts || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">RDOS:</span> <input name="rdos" value={editForm.rdos || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Today's Date:</span> <input name="todays_date" value={editForm.todays_date || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                    </div>
+                    
+                    {/* Reason for Overtime - Edit Mode */}
+                    <div className="mb-4">
+                      <span className="font-medium">Reason for Overtime:</span>
+                      <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_rdo || false} onChange={(e) => setEditForm({...editForm, reason_rdo: e.target.checked})} className="rounded" />
+                          <span className="text-sm">RDO</span>
+                        </label>
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_absentee_coverage || false} onChange={(e) => setEditForm({...editForm, reason_absentee_coverage: e.target.checked})} className="rounded" />
+                          <span className="text-sm">Absentee Coverage</span>
+                        </label>
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_no_lunch || false} onChange={(e) => setEditForm({...editForm, reason_no_lunch: e.target.checked})} className="rounded" />
+                          <span className="text-sm">No Lunch</span>
+                        </label>
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_early_report || false} onChange={(e) => setEditForm({...editForm, reason_early_report: e.target.checked})} className="rounded" />
+                          <span className="text-sm">Early Report</span>
+                        </label>
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_late_clear || false} onChange={(e) => setEditForm({...editForm, reason_late_clear: e.target.checked})} className="rounded" />
+                          <span className="text-sm">Late Clear</span>
+                        </label>
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_save_as_oto || false} onChange={(e) => setEditForm({...editForm, reason_save_as_oto: e.target.checked})} className="rounded" />
+                          <span className="text-sm">Save as OTO</span>
+                        </label>
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_capital_support_go || false} onChange={(e) => setEditForm({...editForm, reason_capital_support_go: e.target.checked})} className="rounded" />
+                          <span className="text-sm">Capital Support/GO</span>
+                        </label>
+                        <label className="flex items-center space-x-2">
+                          <input type="checkbox" checked={editForm.reason_other || false} onChange={(e) => setEditForm({...editForm, reason_other: e.target.checked})} className="rounded" />
+                          <span className="text-sm">Other</span>
+                        </label>
+                      </div>
+                    </div>
+                    
+                    <div className="mb-4">
+                      <span className="font-medium">Comments:</span>
+                      <textarea name="comments" value={editForm.comments || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full mt-1" rows={3} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Action Buttons */}
+              {saveError && (
+                <div className="text-red-600 text-sm mb-4">{saveError}</div>
+              )}
+              <div className="flex gap-3 pt-6 border-t border-gray-200">
+                <button
+                  onClick={handleSaveEdit}
+                  className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 shadow-sm"
+                  disabled={saveLoading}
+                >
+                  {saveLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="bg-gray-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors shadow-sm"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
