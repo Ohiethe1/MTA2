@@ -56,10 +56,10 @@ const Login = () => {
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="text-center">
             <h2 className="mb-2 text-2xl font-bold text-gray-900">
-              MTA Exception Claims Form Processor
+              MTA Overtime Forms Processor
             </h2>
             <p className="text-gray-600">
-              Sign in to access the exception claims system
+              Sign in to access the overtime forms system
             </p>
           </div>
         </div>

@@ -354,6 +354,17 @@ def process_single_form(data, form_type=None):
             form_data["rdos"] = v
         elif norm_k == "acct":
             form_data["acct_number"] = v
+        elif norm_k == "superintendents_authorization":
+            # Handle combined superintendent authorization field (e.g., "713026 07/06/25")
+            if isinstance(v, str) and ' ' in v:
+                parts = v.split(' ', 1)  # Split on first space
+                if len(parts) == 2:
+                    form_data["superintendent_authorization_pass"] = parts[0]
+                    form_data["superintendent_authorization_date"] = parts[1]
+                else:
+                    form_data["superintendent_authorization_pass"] = v
+            else:
+                form_data["superintendent_authorization_pass"] = v
         elif norm_k in key_map:
             form_data[key_map[norm_k]] = v
         elif norm_k in checkbox_map:
@@ -365,6 +376,20 @@ def process_single_form(data, form_type=None):
                 form_data[checkbox_map[reason]] = bool(v)
         else:
             print(f"Unmapped Gemini key: {k} -> {v}")
+    # Clean the form data to handle None values and lists
+    for key, value in form_data.items():
+        if value is None:
+            form_data[key] = ''
+        elif isinstance(value, list):
+            form_data[key] = ', '.join(str(item) for item in value if item is not None)
+        elif isinstance(value, bool):
+            form_data[key] = 1 if value else 0
+        elif key.startswith('reason_') and isinstance(value, str):
+            # Convert string boolean values to integers for reason fields
+            form_data[key] = 1 if value.lower() in ['true', '1', 'yes', 'on'] else 0
+        else:
+            form_data[key] = str(value) if value is not None else ''
+    
     print("FINAL FORM DATA:", form_data)
 
     # For exception claim (hourly) forms, build a row if relevant fields are present
@@ -733,16 +758,36 @@ def get_dashboard_data():
             
             unique_job_numbers = set(job_numbers)
 
-            # Most relevant position (using title) - handle all form types
-            if form_type:
-                c.execute('SELECT title FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
+            # Most relevant position - handle all form types
+            positions = []
+            if form_type == 'supervisor':
+                # For supervisor forms, all positions are "Supervisor"
+                c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
+                supervisor_count = c.fetchone()[0]
+                if supervisor_count > 0:
+                    positions = ['Supervisor'] * supervisor_count
+            elif form_type == 'hourly':
+                # For hourly forms, use title
+                c.execute('SELECT title FROM exception_forms WHERE status = "processed" AND (form_type = ? OR form_type IS NULL)', (form_type,))
+                titles = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
+                positions.extend(titles)
             else:
-                c.execute('SELECT title FROM exception_forms WHERE status = "processed"')
-            titles = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
+                # For general dashboard, combine both
+                # Get supervisor positions (all are "Supervisor")
+                c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
+                supervisor_count = c.fetchone()[0]
+                if supervisor_count > 0:
+                    positions.extend(['Supervisor'] * supervisor_count)
+                
+                # Get hourly positions
+                c.execute('SELECT title FROM exception_forms WHERE status = "processed" AND (form_type = "hourly" OR form_type IS NULL)')
+                hourly_titles = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
+                positions.extend(hourly_titles)
+            
             most_position, most_position_count = ('N/A', 0)
-            if titles:
+            if positions:
                 from collections import Counter
-                most_position, most_position_count = Counter(titles).most_common(1)[0]
+                most_position, most_position_count = Counter(positions).most_common(1)[0]
 
             # Most relevant location - handle all form types
             locations = []
@@ -753,7 +798,7 @@ def get_dashboard_data():
                 for report_loc, overtime_location in location_entries:
                     if report_loc and report_loc != 'N/A':
                         locations.append(report_loc)
-                    elif overtime_location and overtime_location != 'N/A':
+                    if overtime_location and overtime_location != 'N/A':
                         locations.append(overtime_location)
             elif form_type == 'hourly':
                 # For hourly forms, use line_location from rows
@@ -769,7 +814,7 @@ def get_dashboard_data():
                 for report_loc, overtime_location in supervisor_location_entries:
                     if report_loc and report_loc != 'N/A':
                         locations.append(report_loc)
-                    elif overtime_location and overtime_location != 'N/A':
+                    if overtime_location and overtime_location != 'N/A':
                         locations.append(overtime_location)
                 
                 # Get hourly locations
@@ -780,9 +825,36 @@ def get_dashboard_data():
                 locations.extend(hourly_locations)
             
             most_location, most_location_count = ('N/A', 0)
+            location_form_type = None
             if locations:
                 from collections import Counter
                 most_location, most_location_count = Counter(locations).most_common(1)[0]
+                
+                # Determine which form type contributes to the most relevant location
+                if not form_type:  # Only for general dashboard
+                    # Count total supervisor forms vs total hourly forms
+                    c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
+                    total_supervisor_forms = c.fetchone()[0]
+                    
+                    c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND (form_type = "hourly" OR form_type IS NULL)')
+                    total_hourly_forms = c.fetchone()[0]
+                    
+                    # If there are more supervisor forms overall, show supervisor as the contributor
+                    # Otherwise, show which form type actually has the most relevant location
+                    if total_supervisor_forms > total_hourly_forms:
+                        location_form_type = 'supervisor'
+                    else:
+                        # Count forms that actually have this specific location
+                        c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = "supervisor" AND (report_loc = ? OR overtime_location = ?)', (most_location, most_location))
+                        supervisor_with_location = c.fetchone()[0]
+                        
+                        c.execute('''SELECT COUNT(*) FROM exception_form_rows r
+                                     JOIN exception_forms f ON r.form_id = f.id 
+                                     WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL) 
+                                     AND r.line_location = ?''', (most_location,))
+                        hourly_with_location = c.fetchone()[0]
+                        
+                        location_form_type = 'supervisor' if supervisor_with_location > hourly_with_location else 'hourly'
 
             # Forms table
             if form_type:
@@ -811,7 +883,7 @@ def get_dashboard_data():
             "total_job_numbers": len(job_numbers),
             "unique_job_numbers": len(unique_job_numbers),
             "most_relevant_position": {"position": most_position, "count": most_position_count},
-            "most_relevant_location": {"location": most_location, "count": most_location_count},
+            "most_relevant_location": {"location": most_location, "count": most_location_count, "form_type": location_form_type},
             "forms": forms_table
         }
         if form_type == 'supervisor':

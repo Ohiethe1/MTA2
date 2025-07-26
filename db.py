@@ -155,6 +155,98 @@ def init_exception_form_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
     
+    # Add missing supervisor form columns
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN overtime_hours TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN report_loc TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN overtime_location TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN report_time TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN relief_time TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN date_of_overtime TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN job_number TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN rc_number TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN acct_number TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN amount TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Add reason columns for supervisor forms (using INTEGER for SQLite compatibility)
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_rdo INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_absentee_coverage INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_no_lunch INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_early_report INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_late_clear INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_save_as_oto INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_capital_support_go INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_other INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     # Add supervisor-specific columns
     try:
         c.execute("ALTER TABLE exception_forms ADD COLUMN overtime_hours TEXT")
@@ -365,14 +457,14 @@ def store_exception_form(form_data, rows, username, form_type=None, upload_date=
             form_data.get('rc_number', ''),
             form_data.get('acct_number', ''),
             form_data.get('amount', ''),
-            form_data.get('reason_rdo', False),
-            form_data.get('reason_absentee_coverage', False),
-            form_data.get('reason_no_lunch', False),
-            form_data.get('reason_early_report', False),
-            form_data.get('reason_late_clear', False),
-            form_data.get('reason_save_as_oto', False),
-            form_data.get('reason_capital_support_go', False),
-            form_data.get('reason_other', False)
+            form_data.get('reason_rdo', 0),
+            form_data.get('reason_absentee_coverage', 0),
+            form_data.get('reason_no_lunch', 0),
+            form_data.get('reason_early_report', 0),
+            form_data.get('reason_late_clear', 0),
+            form_data.get('reason_save_as_oto', 0),
+            form_data.get('reason_capital_support_go', 0),
+            form_data.get('reason_other', 0)
         ))
         form_id = c.lastrowid
         # Insert rows if any

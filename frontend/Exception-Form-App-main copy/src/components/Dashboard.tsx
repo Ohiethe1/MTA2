@@ -640,13 +640,10 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                   </div>
                   <div className="text-xs text-gray-500 font-medium mt-1">
                     {(() => {
-                      if (!dashboard?.forms) return '';
-                      const supervisorCount = dashboard.forms.filter((f: any) => f.form_type === 'supervisor').length;
-                      const hourlyCount = dashboard.forms.filter((f: any) => !f.form_type || f.form_type === 'hourly').length;
-                      if (!filterType) {
-                        return `(${hourlyCount} hourly, ${supervisorCount} supervisor)`;
+                      if (!filterType && mostRelevantLocation.form_type) {
+                        return mostRelevantLocation.form_type === 'supervisor' ? '(supervisor)' : '(hourly employees)';
                       }
-                      return supervisorCount > hourlyCount ? '(supervisor)' : '(hourly employees)';
+                      return '';
                     })()}
                   </div>
                   <div className="text-xs text-gray-400 font-medium mt-1">
@@ -1185,29 +1182,29 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                           <div className="mb-4">
                             <span className="font-medium">Reason for Overtime:</span>
                             <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_rdo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                RDO {selectedFormDetails.form.reason_rdo ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_rdo == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                RDO {selectedFormDetails.form.reason_rdo == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_absentee_coverage ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                Absentee Coverage {selectedFormDetails.form.reason_absentee_coverage ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_absentee_coverage == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Absentee Coverage {selectedFormDetails.form.reason_absentee_coverage == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_no_lunch ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                No Lunch {selectedFormDetails.form.reason_no_lunch ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_no_lunch == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                No Lunch {selectedFormDetails.form.reason_no_lunch == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_early_report ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                Early Report {selectedFormDetails.form.reason_early_report ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_early_report == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Early Report {selectedFormDetails.form.reason_early_report == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_late_clear ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                Late Clear {selectedFormDetails.form.reason_late_clear ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_late_clear == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Late Clear {selectedFormDetails.form.reason_late_clear == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_save_as_oto ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                Save as OTO {selectedFormDetails.form.reason_save_as_oto ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_save_as_oto == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Save as OTO {selectedFormDetails.form.reason_save_as_oto == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_capital_support_go ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                Capital Support/GO {selectedFormDetails.form.reason_capital_support_go ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_capital_support_go == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Capital Support/GO {selectedFormDetails.form.reason_capital_support_go == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_other ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                Other {selectedFormDetails.form.reason_other ? '✓' : '✗'}
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_other == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                Other {selectedFormDetails.form.reason_other == 1 ? '✓' : '✗'}
                               </div>
                             </div>
                           </div>
@@ -1435,35 +1432,35 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                       <span className="font-medium">Reason for Overtime:</span>
                       <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_rdo || false} onChange={(e) => setEditForm({...editForm, reason_rdo: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_rdo == 1} onChange={(e) => setEditForm({...editForm, reason_rdo: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">RDO</span>
                         </label>
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_absentee_coverage || false} onChange={(e) => setEditForm({...editForm, reason_absentee_coverage: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_absentee_coverage == 1} onChange={(e) => setEditForm({...editForm, reason_absentee_coverage: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">Absentee Coverage</span>
                         </label>
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_no_lunch || false} onChange={(e) => setEditForm({...editForm, reason_no_lunch: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_no_lunch == 1} onChange={(e) => setEditForm({...editForm, reason_no_lunch: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">No Lunch</span>
                         </label>
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_early_report || false} onChange={(e) => setEditForm({...editForm, reason_early_report: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_early_report == 1} onChange={(e) => setEditForm({...editForm, reason_early_report: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">Early Report</span>
                         </label>
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_late_clear || false} onChange={(e) => setEditForm({...editForm, reason_late_clear: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_late_clear == 1} onChange={(e) => setEditForm({...editForm, reason_late_clear: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">Late Clear</span>
                         </label>
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_save_as_oto || false} onChange={(e) => setEditForm({...editForm, reason_save_as_oto: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_save_as_oto == 1} onChange={(e) => setEditForm({...editForm, reason_save_as_oto: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">Save as OTO</span>
                         </label>
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_capital_support_go || false} onChange={(e) => setEditForm({...editForm, reason_capital_support_go: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_capital_support_go == 1} onChange={(e) => setEditForm({...editForm, reason_capital_support_go: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">Capital Support/GO</span>
                         </label>
                         <label className="flex items-center space-x-2">
-                          <input type="checkbox" checked={editForm.reason_other || false} onChange={(e) => setEditForm({...editForm, reason_other: e.target.checked})} className="rounded" />
+                          <input type="checkbox" checked={editForm.reason_other == 1} onChange={(e) => setEditForm({...editForm, reason_other: e.target.checked ? 1 : 0})} className="rounded" />
                           <span className="text-sm">Other</span>
                         </label>
                       </div>
