@@ -47,6 +47,18 @@ interface DashboardProps {
   heading?: string;
 }
 
+interface FilterState {
+  search: string;
+  status: string;
+  dateFrom: string;
+  dateTo: string;
+  employeeName: string;
+  passNumber: string;
+  title: string;
+  location: string;
+  jobNumber: string;
+}
+
 const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const [dashboard, setDashboard] = useState<any>(null);
   const [selectedFormDetails, setSelectedFormDetails] = useState<any>(null);
@@ -59,7 +71,18 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const [editRows, setEditRows] = useState<any[]>([]);
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState<FilterState>({
+    search: '',
+    status: '',
+    dateFrom: '',
+    dateTo: '',
+    employeeName: '',
+    passNumber: '',
+    title: '',
+    location: '',
+    jobNumber: ''
+  });
+  const [showFilters, setShowFilters] = useState(false);
   const [isEditingRawJson, setIsEditingRawJson] = useState(false);
   const [rawJsonEdit, setRawJsonEdit] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
@@ -300,14 +323,97 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
     setSaveError('');
   };
 
-  // Add explicit type for filteredForms
-  let filteredForms: any[] = dashboard?.forms || [];
-  // Show all forms if form_type is missing or 'hourly' for hourly dashboard
-  if (filterType === 'hourly') {
-    filteredForms = filteredForms.filter((form: any) => !form.form_type || form.form_type === 'hourly');
-  } else if (filterType === 'supervisor') {
-    filteredForms = filteredForms.filter((form: any) => form.form_type === 'supervisor');
-  }
+  // Filter forms based on search and filters
+  const getFilteredForms = () => {
+    let filteredForms: any[] = dashboard?.forms || [];
+    
+    // First filter by form type
+    if (filterType === 'hourly') {
+      filteredForms = filteredForms.filter((form: any) => !form.form_type || form.form_type === 'hourly');
+    } else if (filterType === 'supervisor') {
+      filteredForms = filteredForms.filter((form: any) => form.form_type === 'supervisor');
+    }
+
+    // Apply search filter
+    if (filters.search) {
+      const searchTerm = filters.search.toLowerCase();
+      filteredForms = filteredForms.filter((form: any) => {
+        const searchableFields = [
+          form.pass_number,
+          form.employee_name,
+          form.title,
+          form.status,
+          form.comments,
+          form.fileName,
+          form.regular_assignment,
+          form.report_loc,
+          form.overtime_location,
+          form.job_number,
+          form.ta_job_no
+        ].filter(Boolean).join(' ').toLowerCase();
+        
+        return searchableFields.includes(searchTerm);
+      });
+    }
+
+    // Apply individual filters
+    if (filters.status) {
+      filteredForms = filteredForms.filter((form: any) => form.status === filters.status);
+    }
+
+    if (filters.employeeName) {
+      filteredForms = filteredForms.filter((form: any) => 
+        form.employee_name?.toLowerCase().includes(filters.employeeName.toLowerCase())
+      );
+    }
+
+    if (filters.passNumber) {
+      filteredForms = filteredForms.filter((form: any) => 
+        form.pass_number?.toLowerCase().includes(filters.passNumber.toLowerCase())
+      );
+    }
+
+    if (filters.title) {
+      filteredForms = filteredForms.filter((form: any) => 
+        form.title?.toLowerCase().includes(filters.title.toLowerCase())
+      );
+    }
+
+    if (filters.location) {
+      filteredForms = filteredForms.filter((form: any) => {
+        const locationFields = [
+          form.report_loc,
+          form.overtime_location,
+          form.regular_assignment
+        ].filter(Boolean).join(' ').toLowerCase();
+        return locationFields.includes(filters.location.toLowerCase());
+      });
+    }
+
+    if (filters.jobNumber) {
+      filteredForms = filteredForms.filter((form: any) => {
+        const jobFields = [
+          form.job_number,
+          form.ta_job_no
+        ].filter(Boolean).join(' ').toLowerCase();
+        return jobFields.includes(filters.jobNumber.toLowerCase());
+      });
+    }
+
+    // Apply date range filter
+    if (filters.dateFrom || filters.dateTo) {
+      filteredForms = filteredForms.filter((form: any) => {
+        const uploadDate = new Date(form.upload_date);
+        if (filters.dateFrom && uploadDate < new Date(filters.dateFrom)) return false;
+        if (filters.dateTo && uploadDate > new Date(filters.dateTo)) return false;
+        return true;
+      });
+    }
+
+    return filteredForms;
+  };
+
+  const filteredForms = getFilteredForms();
 
   // Use backend summary stats for cards
   const totalForms = filteredForms.length;
@@ -345,6 +451,28 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
     } catch (err) {
       alert('Network or server error.');
     }
+  };
+
+  const handleFilterChange = (key: keyof FilterState, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters({
+      search: '',
+      status: '',
+      dateFrom: '',
+      dateTo: '',
+      employeeName: '',
+      passNumber: '',
+      title: '',
+      location: '',
+      jobNumber: ''
+    });
+  };
+
+  const hasActiveFilters = () => {
+    return Object.values(filters).some(value => value !== '');
   };
 
   // Remove getFilteredProcessedForms and use filteredForms for table only
@@ -664,13 +792,40 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         <div className="px-8 py-6 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <h2 className="text-2xl font-bold text-gray-800">Uploaded Forms ({filteredForms.length})</h2>
           <div className="flex gap-2 items-center">
-            <input
-              type="text"
-              placeholder="Search by Pass Number, Name, Title, Status, Line/Location, Comments..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="border rounded px-3 py-2 text-sm w-64"
-            />
+            {/* Search Input */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search by Pass Number, Name, Title, Status, Line/Location, Comments..."
+                value={filters.search}
+                onChange={e => handleFilterChange('search', e.target.value)}
+                className="border rounded px-3 py-2 text-sm w-64 pr-8"
+              />
+              {filters.search && (
+                <button
+                  onClick={() => handleFilterChange('search', '')}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            
+            {/* Filter Toggle Button */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                showFilters 
+                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              <svg className="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
+              </svg>
+              Filters {hasActiveFilters() && <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">●</span>}
+            </button>
+            
             <button
               onClick={handleExport}
               className="bg-gradient-to-r from-blue-500 to-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition-colors relative group text-sm"
@@ -682,6 +837,127 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
             </button>
           </div>
         </div>
+        
+        {/* Advanced Filters Panel */}
+        {showFilters && (
+          <div className="px-8 py-6 border-b border-gray-200 bg-gray-50">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Status Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  value={filters.status}
+                  onChange={e => handleFilterChange('status', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="processed">Processed</option>
+                  <option value="error">Error</option>
+                </select>
+              </div>
+
+              {/* Employee Name Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Employee Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter employee name..."
+                  value={filters.employeeName}
+                  onChange={e => handleFilterChange('employeeName', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Pass Number Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Pass Number</label>
+                <input
+                  type="text"
+                  placeholder="Enter pass number..."
+                  value={filters.passNumber}
+                  onChange={e => handleFilterChange('passNumber', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Title Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input
+                  type="text"
+                  placeholder="Enter title..."
+                  value={filters.title}
+                  onChange={e => handleFilterChange('title', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Location Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location/Line</label>
+                <input
+                  type="text"
+                  placeholder="Enter location or line..."
+                  value={filters.location}
+                  onChange={e => handleFilterChange('location', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Job Number Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Job Number</label>
+                <input
+                  type="text"
+                  placeholder="Enter job number..."
+                  value={filters.jobNumber}
+                  onChange={e => handleFilterChange('jobNumber', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Date From Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date From</label>
+                <input
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={e => handleFilterChange('dateFrom', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Date To Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date To</label>
+                <input
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={e => handleFilterChange('dateTo', e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Filter Actions */}
+            <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200">
+              <button
+                onClick={clearAllFilters}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Clear All Filters
+              </button>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        )}
+        
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-white border-b border-gray-200">
