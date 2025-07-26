@@ -808,81 +808,166 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
 
                   {filterType === 'supervisor' && selectedFormDetails && selectedFormDetails.form && (
                     <div className="mb-6">
-                      <div className="flex justify-end mb-4">
-                        {!isEditingRawJson && selectedFormDetails.form.raw_gemini_json && (
-                          <button
-                            onClick={handleEditRawJson}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                      {isEditingRawJson ? (
-                        <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                          <textarea
-                            value={rawJsonEdit}
-                            onChange={(e) => setRawJsonEdit(e.target.value)}
-                            className="w-full h-80 p-4 border-0 rounded-lg font-mono text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors"
-                            placeholder="Edit the Gemini AI extraction data here..."
-                          />
-                          {saveError && (
-                            <div className="text-red-600 text-sm mt-3 px-4">{saveError}</div>
+                      {/* Supervisor Form Details (Editable Display) */}
+                      <div className="mb-6">
+                        <div className="flex justify-between items-center mb-4">
+                          <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Supervisor Overtime Authorization Details</h4>
+                          {!isEditing && (
+                            <button
+                              onClick={handleEdit}
+                              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                            >
+                              Edit Form
+                            </button>
                           )}
-                          <div className="flex gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-                            <button
-                              onClick={handleSaveRawJson}
-                              className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 shadow-sm"
-                              disabled={saveLoading}
-                            >
-                              {saveLoading ? 'Saving...' : 'Save Changes'}
-                            </button>
-                            <button
-                              onClick={handleCancelRawJson}
-                              className="bg-gray-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors shadow-sm"
-                            >
-                              Cancel
-                            </button>
-                          </div>
                         </div>
-                      ) : (
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-sm overflow-hidden">
-                          <div className="bg-blue-600 text-white px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                              </svg>
-                              <span className="font-medium">AI Extracted Data</span>
+                        
+                        {isEditing ? (
+                          // Edit Mode
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                              <div><span className="font-medium">Regular Assignment:</span> <input name="reg" value={editForm.reg || editForm.regular_assignment || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Pass Number:</span> <input name="pass_number" value={editForm.pass_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Title:</span> <input name="title" value={editForm.title || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Employee Name:</span> <input name="employee_name" value={editForm.employee_name || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Job Number:</span> <input name="job_number" value={editForm.job_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">RC Number:</span> <input name="rc_number" value={editForm.rc_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Report Location:</span> <input name="report_loc" value={editForm.report_loc || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Overtime Location:</span> <input name="overtime_location" value={editForm.overtime_location || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Report Time:</span> <input name="report_time" value={editForm.report_time || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Relief Time:</span> <input name="relief_time" value={editForm.relief_time || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Date of Overtime:</span> <input name="date_of_overtime" value={editForm.date_of_overtime || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Overtime Hours:</span> <input name="overtime_hours" value={editForm.overtime_hours || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Account Number:</span> <input name="acct_number" value={editForm.acct_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Entered into UTS:</span> <input name="entered_into_uts" value={editForm.entered_into_uts || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">RDOS:</span> <input name="rdos" value={editForm.rdos || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                              <div><span className="font-medium">Today's Date:</span> <input name="todays_date" value={editForm.todays_date || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
+                            </div>
+                            
+                            {/* Reason for Overtime - Edit Mode */}
+                            <div>
+                              <span className="font-medium">Reason for Overtime:</span>
+                              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_rdo || false} onChange={(e) => setEditForm({...editForm, reason_rdo: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">RDO</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_absentee_coverage || false} onChange={(e) => setEditForm({...editForm, reason_absentee_coverage: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">Absentee Coverage</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_no_lunch || false} onChange={(e) => setEditForm({...editForm, reason_no_lunch: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">No Lunch</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_early_report || false} onChange={(e) => setEditForm({...editForm, reason_early_report: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">Early Report</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_late_clear || false} onChange={(e) => setEditForm({...editForm, reason_late_clear: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">Late Clear</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_save_as_oto || false} onChange={(e) => setEditForm({...editForm, reason_save_as_oto: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">Save as OTO</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_capital_support_go || false} onChange={(e) => setEditForm({...editForm, reason_capital_support_go: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">Capital Support/GO</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input type="checkbox" checked={editForm.reason_other || false} onChange={(e) => setEditForm({...editForm, reason_other: e.target.checked})} className="rounded" />
+                                  <span className="text-sm">Other</span>
+                                </label>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <span className="font-medium">Comments:</span>
+                              <textarea name="comments" value={editForm.comments || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full mt-1" rows={3} />
+                            </div>
+                            
+                            {/* Edit Action Buttons */}
+                            {saveError && (
+                              <div className="text-red-600 text-sm">{saveError}</div>
+                            )}
+                            <div className="flex gap-3 pt-4">
+                              <button
+                                onClick={handleSaveEdit}
+                                className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 shadow-sm"
+                                disabled={saveLoading}
+                              >
+                                {saveLoading ? 'Saving...' : 'Save Changes'}
+                              </button>
+                              <button
+                                onClick={handleCancelEdit}
+                                className="bg-gray-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors shadow-sm"
+                              >
+                                Cancel
+                              </button>
                             </div>
                           </div>
-                          <div className="p-4">
-                            {selectedFormDetails.form.raw_gemini_json ? (
-                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                <pre className="text-sm text-gray-800 p-4 overflow-x-auto max-h-96 leading-relaxed">
-                                  {JSON.stringify(
-                                    (() => {
-                                      try {
-                                        return JSON.parse(selectedFormDetails.form.raw_gemini_json);
-                                      } catch {
-                                        return selectedFormDetails.form.raw_gemini_json;
-                                      }
-                                    })(),
-                                    null,
-                                    2
-                                  )}
-                                </pre>
+                        ) : (
+                          // View Mode
+                          <div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                              <div><span className="font-medium">Regular Assignment:</span> {selectedFormDetails.form.reg || selectedFormDetails.form.regular_assignment || 'N/A'}</div>
+                              <div><span className="font-medium">Pass Number:</span> {selectedFormDetails.form.pass_number || 'N/A'}</div>
+                              <div><span className="font-medium">Title:</span> {selectedFormDetails.form.title || 'N/A'}</div>
+                              <div><span className="font-medium">Employee Name:</span> {selectedFormDetails.form.employee_name || 'N/A'}</div>
+                              <div><span className="font-medium">Job Number:</span> {selectedFormDetails.form.job_number || 'N/A'}</div>
+                              <div><span className="font-medium">RC Number:</span> {selectedFormDetails.form.rc_number || 'N/A'}</div>
+                              <div><span className="font-medium">Report Location:</span> {selectedFormDetails.form.report_loc || 'N/A'}</div>
+                              <div><span className="font-medium">Overtime Location:</span> {selectedFormDetails.form.overtime_location || 'N/A'}</div>
+                              <div><span className="font-medium">Report Time:</span> {selectedFormDetails.form.report_time || 'N/A'}</div>
+                              <div><span className="font-medium">Relief Time:</span> {selectedFormDetails.form.relief_time || 'N/A'}</div>
+                              <div><span className="font-medium">Date of Overtime:</span> {selectedFormDetails.form.date_of_overtime || 'N/A'}</div>
+                              <div><span className="font-medium">Overtime Hours:</span> {selectedFormDetails.form.overtime_hours || 'N/A'}</div>
+                              <div><span className="font-medium">Account Number:</span> {selectedFormDetails.form.acct_number || 'N/A'}</div>
+                              <div><span className="font-medium">Entered into UTS:</span> {selectedFormDetails.form.entered_into_uts || 'N/A'}</div>
+                              <div><span className="font-medium">RDOS:</span> {selectedFormDetails.form.rdos || 'N/A'}</div>
+                              <div><span className="font-medium">Today's Date:</span> {selectedFormDetails.form.todays_date || 'N/A'}</div>
+                            </div>
+                            
+                            {/* Reason for Overtime - View Mode */}
+                            <div className="mb-4">
+                              <span className="font-medium">Reason for Overtime:</span>
+                              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_rdo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  RDO {selectedFormDetails.form.reason_rdo ? '✓' : '✗'}
+                                </div>
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_absentee_coverage ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  Absentee Coverage {selectedFormDetails.form.reason_absentee_coverage ? '✓' : '✗'}
+                                </div>
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_no_lunch ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  No Lunch {selectedFormDetails.form.reason_no_lunch ? '✓' : '✗'}
+                                </div>
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_early_report ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  Early Report {selectedFormDetails.form.reason_early_report ? '✓' : '✗'}
+                                </div>
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_late_clear ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  Late Clear {selectedFormDetails.form.reason_late_clear ? '✓' : '✗'}
+                                </div>
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_save_as_oto ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  Save as OTO {selectedFormDetails.form.reason_save_as_oto ? '✓' : '✗'}
+                                </div>
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_capital_support_go ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  Capital Support/GO {selectedFormDetails.form.reason_capital_support_go ? '✓' : '✗'}
+                                </div>
+                                <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_other ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                  Other {selectedFormDetails.form.reason_other ? '✓' : '✗'}
+                                </div>
                               </div>
-                            ) : (
-                              <div className="text-center py-8 text-gray-500">
-                                <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                <p className="text-sm">No AI extraction data available</p>
-                              </div>
-                            )}
+                            </div>
+                            
+                            <div className="mb-4">
+                              <span className="font-medium">Comments:</span>
+                              <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem] mt-1">{selectedFormDetails.form.comments || 'N/A'}</div>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   )}
                 </>
