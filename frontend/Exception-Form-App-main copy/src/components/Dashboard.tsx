@@ -60,6 +60,8 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [search, setSearch] = useState('');
+  const [isEditingRawJson, setIsEditingRawJson] = useState(false);
+  const [rawJsonEdit, setRawJsonEdit] = useState('');
   // const { user } = useAuth ? useAuth() : { user: null };
 
   useEffect(() => {
@@ -230,6 +232,70 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setSaveError('');
+  };
+
+  const handleEditRawJson = () => {
+    if (selectedFormDetails?.form?.raw_gemini_json) {
+      try {
+        const parsed = JSON.parse(selectedFormDetails.form.raw_gemini_json);
+        setRawJsonEdit(JSON.stringify(parsed, null, 2));
+        setIsEditingRawJson(true);
+      } catch {
+        setRawJsonEdit(selectedFormDetails.form.raw_gemini_json);
+        setIsEditingRawJson(true);
+      }
+    }
+  };
+
+  const handleSaveRawJson = async () => {
+    try {
+      // Validate JSON
+      JSON.parse(rawJsonEdit);
+      
+      setSaveLoading(true);
+      setSaveError('');
+      
+      const response = await fetch(`http://localhost:8000/api/form/${selectedFormDetails.form.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          form: { ...selectedFormDetails.form, raw_gemini_json: rawJsonEdit },
+          rows: selectedFormDetails.rows 
+        }),
+      });
+      
+      const data = await response.json();
+      if (response.ok) {
+        // Re-fetch the latest form details
+        const detailsRes = await fetch(`http://localhost:8000/api/form/${selectedFormDetails.form.id}`);
+        const detailsData = await detailsRes.json();
+        setSelectedFormDetails(detailsData);
+        setIsEditingRawJson(false);
+        
+        // Re-fetch dashboard data to update the table
+        let url = 'http://localhost:8000/api/dashboard';
+        if (filterType === 'hourly') {
+          url += '?form_type=hourly';
+        } else if (filterType === 'supervisor') {
+          url += '?form_type=supervisor';
+        }
+        fetch(url)
+          .then(res => res.json())
+          .then(data => {
+            setDashboard(data);
+          });
+      } else {
+        setSaveError(data.error || 'Failed to save raw JSON.');
+      }
+    } catch (err) {
+      setSaveError('Invalid JSON format.');
+    }
+    setSaveLoading(false);
+  };
+
+  const handleCancelRawJson = () => {
+    setIsEditingRawJson(false);
     setSaveError('');
   };
 
@@ -711,189 +777,118 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                         <span className="font-medium">Comments:</span>
                         <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem]">{selectedFormDetails.form.comments || 'N/A'}</div>
                       </div>
+                      
+                      {/* Overtime Time Details */}
+                      {selectedFormDetails.rows && selectedFormDetails.rows.length > 0 && (
+                        <div className="mt-4">
+                          <h5 className="font-semibold text-gray-800 text-md border-b pb-2 mb-3">Overtime Time Details</h5>
+                          {selectedFormDetails.rows.map((row: any, index: number) => (
+                            <div key={index} className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-3">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div><span className="font-medium">Line/Location:</span> {row.line_location || 'N/A'}</div>
+                                <div><span className="font-medium">Run No.:</span> {row.run_no || 'N/A'}</div>
+                                <div><span className="font-medium">Exception Time From:</span> {row.exception_time_from_hh || '0'}:{row.exception_time_from_mm || '00'}</div>
+                                <div><span className="font-medium">Exception Time To:</span> {row.exception_time_to_hh || '0'}:{row.exception_time_to_mm || '00'}</div>
+                                <div><span className="font-medium">Overtime:</span> {row.overtime_hh || '0'}h {row.overtime_mm || '0'}m</div>
+                                <div><span className="font-medium">Bonus:</span> {row.bonus_hh || '0'}h {row.bonus_mm || '0'}m</div>
+                                <div><span className="font-medium">Night Differential:</span> {row.nite_diff_hh || '0'}h {row.nite_diff_mm || '0'}m</div>
+                                <div><span className="font-medium">TA Job No.:</span> {row.ta_job_no || 'N/A'}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* If no fields extracted */}
                   {!(selectedFormDetails.form.regular_assignment || selectedFormDetails.form.report || selectedFormDetails.form.relief || selectedFormDetails.form.todays_date || selectedFormDetails.form.pass_number || selectedFormDetails.form.employee_name || selectedFormDetails.form.title || selectedFormDetails.form.rdos || selectedFormDetails.form.actual_ot_date || selectedFormDetails.form.div || selectedFormDetails.form.supervisor_name || selectedFormDetails.form.supervisor_pass_no || selectedFormDetails.form.oto || selectedFormDetails.form.oto_amount_saved || selectedFormDetails.form.entered_in_uts || selectedFormDetails.form.comments) && (
                     <div className="text-gray-500 mb-4">No details were extracted from this form.</div>
                   )}
-                  {/* Rows */}
-                  <div>
-                    <h4 className="font-semibold text-gray-800 text-lg border-b pb-2 mb-2">Rows</h4>
-                    {selectedFormDetails.rows.length === 0 ? (
-                      <div className="text-gray-500">No rows available.</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-100">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Location</th>
-                              <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Run No.</th>
-                              <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Exception Time</th>
-                              <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Overtime</th>
-                              <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Bonus</th>
-                              <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Nite Diff.</th>
-                              <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">TA Job No.</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {isEditing && filterType === 'hourly' ? (
-                              editRows.map((row: any, idx: number) => (
-                                <tr key={idx}>
-                                  <td className="px-4 py-2 text-sm text-gray-900"><input name="line_location" value={row.line_location || ''} onChange={e => handleEditRowChange(idx, 'line_location', e.target.value)} className="border rounded p-1 w-full" /></td>
-                                  <td className="px-4 py-2 text-sm text-gray-900"><input name="run_no" value={row.run_no || ''} onChange={e => handleEditRowChange(idx, 'run_no', e.target.value)} className="border rounded p-1 w-full" /></td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">
-                                    <input name="exception_time_from_hh" value={row.exception_time_from_hh || ''} onChange={e => handleEditRowChange(idx, 'exception_time_from_hh', e.target.value)} className="border rounded p-1 w-10 mr-1" placeholder="From HH" />:
-                                    <input name="exception_time_from_mm" value={row.exception_time_from_mm || ''} onChange={e => handleEditRowChange(idx, 'exception_time_from_mm', e.target.value)} className="border rounded p-1 w-10 mr-1" placeholder="From MM" /> to
-                                    <input name="exception_time_to_hh" value={row.exception_time_to_hh || ''} onChange={e => handleEditRowChange(idx, 'exception_time_to_hh', e.target.value)} className="border rounded p-1 w-10 ml-1 mr-1" placeholder="To HH" />:
-                                    <input name="exception_time_to_mm" value={row.exception_time_to_mm || ''} onChange={e => handleEditRowChange(idx, 'exception_time_to_mm', e.target.value)} className="border rounded p-1 w-10" placeholder="To MM" />
-                                  </td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">
-                                    <input name="overtime_hh" value={row.overtime_hh || ''} onChange={e => handleEditRowChange(idx, 'overtime_hh', e.target.value)} className="border rounded p-1 w-10 mr-1" placeholder="HH" />:
-                                    <input name="overtime_mm" value={row.overtime_mm || ''} onChange={e => handleEditRowChange(idx, 'overtime_mm', e.target.value)} className="border rounded p-1 w-10" placeholder="MM" />
-                                  </td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">
-                                    <input name="bonus_hh" value={row.bonus_hh || ''} onChange={e => handleEditRowChange(idx, 'bonus_hh', e.target.value)} className="border rounded p-1 w-10 mr-1" placeholder="HH" />:
-                                    <input name="bonus_mm" value={row.bonus_mm || ''} onChange={e => handleEditRowChange(idx, 'bonus_mm', e.target.value)} className="border rounded p-1 w-10" placeholder="MM" />
-                                  </td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">
-                                    <input name="nite_diff_hh" value={row.nite_diff_hh || ''} onChange={e => handleEditRowChange(idx, 'nite_diff_hh', e.target.value)} className="border rounded p-1 w-10 mr-1" placeholder="HH" />:
-                                    <input name="nite_diff_mm" value={row.nite_diff_mm || ''} onChange={e => handleEditRowChange(idx, 'nite_diff_mm', e.target.value)} className="border rounded p-1 w-10" placeholder="MM" />
-                                  </td>
-                                  <td className="px-4 py-2 text-sm text-gray-900"><input name="ta_job_no" value={row.ta_job_no || ''} onChange={e => handleEditRowChange(idx, 'ta_job_no', e.target.value)} className="border rounded p-1 w-full" /></td>
-                                </tr>
-                              ))
-                            ) : (
-                              selectedFormDetails.rows.map((row: any, idx: number) => (
-                                <tr key={idx}>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{row.line_location || ''}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{row.run_no || ''}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{row.exception_time_from_hh || ''}:{row.exception_time_from_mm || ''} to {row.exception_time_to_hh || ''}:{row.exception_time_to_mm || ''}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{row.overtime_hh || ''}:{row.overtime_mm || ''}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{row.bonus_hh || ''}:{row.bonus_mm || ''}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{row.nite_diff_hh || ''}:{row.nite_diff_mm || ''}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{row.ta_job_no || ''}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                  {/* Supervisor Full Details Section (all fields) */}
+
+
                   {filterType === 'supervisor' && selectedFormDetails && selectedFormDetails.form && (
-                    <div className="mb-4">
-                      <h4 className="font-semibold text-gray-800 text-lg border-b pb-2 mb-2">Supervisor Overtime Full Details</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-2">
-                        {isEditing ? (
-                          <>
-                            <div><span className="font-medium">Regular Assignment:</span> <input name="regular_assignment" value={editForm.regular_assignment || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Report Loc.:</span> <input name="report" value={editForm.report || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Report Location:</span> <input name="report_loc" value={editForm.report_loc || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Date:</span> <input name="todays_date" value={editForm.todays_date || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Pass:</span> <input name="pass_number" value={editForm.pass_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Title:</span> <input name="title" value={editForm.title || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">RC #:</span> <input name="rc_number" value={editForm.rc_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Employee Name:</span> <input name="employee_name" value={editForm.employee_name || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">RDO's:</span> <input name="rdos" value={editForm.rdos || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Date of Overtime:</span> <input name="date_of_overtime" value={editForm.date_of_overtime || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Job #:</span> <input name="job_number" value={editForm.job_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Overtime Location:</span> <input name="overtime_location" value={editForm.overtime_location || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Report Time:</span> <input name="report_time" value={editForm.report_time || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Relief Time:</span> <input name="relief_time" value={editForm.relief_time || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Overtime Hours:</span> <input name="overtime_hours" value={editForm.overtime_hours || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Acct #:</span> <input name="acct_number" value={editForm.acct_number || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                            <div><span className="font-medium">Amount:</span> <input name="amount" value={editForm.amount || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full" /></div>
-                          </>
-                        ) : (
-                          <>
-                            <div><span className="font-medium">Regular Assignment:</span> {selectedFormDetails.form.regular_assignment || 'N/A'}</div>
-                            <div><span className="font-medium">Report Loc.:</span> {selectedFormDetails.form.report || 'N/A'}</div>
-                            <div><span className="font-medium">Report Location:</span> {selectedFormDetails.form.report_loc || 'N/A'}</div>
-                            <div><span className="font-medium">Date:</span> {selectedFormDetails.form.todays_date || 'N/A'}</div>
-                            <div><span className="font-medium">Pass:</span> {selectedFormDetails.form.pass_number || 'N/A'}</div>
-                            <div><span className="font-medium">Title:</span> {selectedFormDetails.form.title || 'N/A'}</div>
-                            <div><span className="font-medium">RC #:</span> {selectedFormDetails.form.rc_number || 'N/A'}</div>
-                            <div><span className="font-medium">Employee Name:</span> {selectedFormDetails.form.employee_name || 'N/A'}</div>
-                            <div><span className="font-medium">RDO's:</span> {selectedFormDetails.form.rdos || 'N/A'}</div>
-                            <div><span className="font-medium">Date of Overtime:</span> {selectedFormDetails.form.date_of_overtime || 'N/A'}</div>
-                            <div><span className="font-medium">Job #:</span> {selectedFormDetails.form.job_number || 'N/A'}</div>
-                            <div><span className="font-medium">Overtime Location:</span> {selectedFormDetails.form.overtime_location || 'N/A'}</div>
-                            <div><span className="font-medium">Report Time:</span> {selectedFormDetails.form.report_time || 'N/A'}</div>
-                            <div><span className="font-medium">Relief Time:</span> {selectedFormDetails.form.relief_time || 'N/A'}</div>
-                            <div><span className="font-medium">Overtime Hours:</span> {selectedFormDetails.form.overtime_hours || 'N/A'}</div>
-                            <div><span className="font-medium">Acct #:</span> {selectedFormDetails.form.acct_number || 'N/A'}</div>
-                            <div><span className="font-medium">Amount:</span> {selectedFormDetails.form.amount || 'N/A'}</div>
-                          </>
+                    <div className="mb-6">
+                      <div className="flex justify-end mb-4">
+                        {!isEditingRawJson && selectedFormDetails.form.raw_gemini_json && (
+                          <button
+                            onClick={handleEditRawJson}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                          >
+                            Edit
+                          </button>
                         )}
                       </div>
-                      <div className="mb-2">
-                        <h4 className="font-semibold text-gray-700 text-base mb-1">Reason for Overtime</h4>
-                        <div className="flex flex-wrap gap-4">
-                          {isEditing ? (
-                            <>
-                              <label><input type="checkbox" name="reason_rdo" checked={!!editForm.reason_rdo} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_rdo: e.target.checked }))} /> RDO</label>
-                              <label><input type="checkbox" name="reason_absentee_coverage" checked={!!editForm.reason_absentee_coverage} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_absentee_coverage: e.target.checked }))} /> Absentee Coverage</label>
-                              <label><input type="checkbox" name="reason_no_lunch" checked={!!editForm.reason_no_lunch} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_no_lunch: e.target.checked }))} /> No Lunch</label>
-                              <label><input type="checkbox" name="reason_early_report" checked={!!editForm.reason_early_report} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_early_report: e.target.checked }))} /> Early Report</label>
-                              <label><input type="checkbox" name="reason_late_clear" checked={!!editForm.reason_late_clear} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_late_clear: e.target.checked }))} /> Late Clear</label>
-                              <label><input type="checkbox" name="reason_save_as_oto" checked={!!editForm.reason_save_as_oto} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_save_as_oto: e.target.checked }))} /> Save as OTO</label>
-                              <label><input type="checkbox" name="reason_capital_support_go" checked={!!editForm.reason_capital_support_go} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_capital_support_go: e.target.checked }))} /> Capital Support / GO</label>
-                              <label><input type="checkbox" name="reason_other" checked={!!editForm.reason_other} onChange={e => setEditForm((prev: any) => ({ ...prev, reason_other: e.target.checked }))} /> Other</label>
-                            </>
-                          ) : (
-                            <>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_rdo} readOnly /> RDO</div>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_absentee_coverage} readOnly /> Absentee Coverage</div>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_no_lunch} readOnly /> No Lunch</div>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_early_report} readOnly /> Early Report</div>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_late_clear} readOnly /> Late Clear</div>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_save_as_oto} readOnly /> Save as OTO</div>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_capital_support_go} readOnly /> Capital Support / GO</div>
-                              <div><input type="checkbox" checked={!!selectedFormDetails.form.reason_other} readOnly /> Other</div>
-                            </>
+                      {isEditingRawJson ? (
+                        <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                          <textarea
+                            value={rawJsonEdit}
+                            onChange={(e) => setRawJsonEdit(e.target.value)}
+                            className="w-full h-80 p-4 border-0 rounded-lg font-mono text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors"
+                            placeholder="Edit the Gemini AI extraction data here..."
+                          />
+                          {saveError && (
+                            <div className="text-red-600 text-sm mt-3 px-4">{saveError}</div>
                           )}
+                          <div className="flex gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+                            <button
+                              onClick={handleSaveRawJson}
+                              className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 shadow-sm"
+                              disabled={saveLoading}
+                            >
+                              {saveLoading ? 'Saving...' : 'Save Changes'}
+                            </button>
+                            <button
+                              onClick={handleCancelRawJson}
+                              className="bg-gray-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors shadow-sm"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="mb-2">
-                        <span className="font-medium">Comments:</span>
-                        {isEditing ? (
-                          <textarea name="comments" value={editForm.comments || ''} onChange={handleEditFormChange} className="border rounded p-1 w-full mt-1" rows={2} />
-                        ) : (
-                          <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem]">{selectedFormDetails.form.comments || 'N/A'}</div>
-                        )}
-                      </div>
+                      ) : (
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-sm overflow-hidden">
+                          <div className="bg-blue-600 text-white px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                              </svg>
+                              <span className="font-medium">AI Extracted Data</span>
+                            </div>
+                          </div>
+                          <div className="p-4">
+                            {selectedFormDetails.form.raw_gemini_json ? (
+                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                <pre className="text-sm text-gray-800 p-4 overflow-x-auto max-h-96 leading-relaxed">
+                                  {JSON.stringify(
+                                    (() => {
+                                      try {
+                                        return JSON.parse(selectedFormDetails.form.raw_gemini_json);
+                                      } catch {
+                                        return selectedFormDetails.form.raw_gemini_json;
+                                      }
+                                    })(),
+                                    null,
+                                    2
+                                  )}
+                                </pre>
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-gray-500">
+                                <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <p className="text-sm">No AI extraction data available</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
               )}
             </div>
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
-              {isEditing ? (
-                <>
-                  <button
-                    onClick={handleSaveEdit}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    disabled={saveLoading}
-                  >
-                    {saveLoading ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    onClick={handleCancelEdit}
-                    className="bg-gray-400 text-white px-6 py-2 rounded-lg font-semibold hover:bg-gray-500 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={handleEdit}
-                  className="bg-yellow-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-yellow-600 transition-colors"
-                >
-                  Edit
-                </button>
-              )}
               <button
                 onClick={closeDetailsModal}
                 className="bg-gray-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-gray-700 transition-colors"

@@ -23,7 +23,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 model = train_model()
 init_db()
-
+init_exception_form_db()    
 # Enable WAL mode for better SQLite concurrency
 with sqlite3.connect('forms.db', timeout=10) as conn:
     conn.execute('PRAGMA journal_mode=WAL;')
@@ -57,13 +57,46 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
     import json
     try:
         data = json.loads(cleaned)
+        raw_gemini_json = json.dumps(data)  # Store the raw Gemini output
     except Exception as e:
         print("Error parsing cleaned Gemini output:", e)
         return {}, []
+    
+    # Check if this is a multi-form response (has 'entries' array)
+    if isinstance(data, dict) and 'entries' in data and isinstance(data['entries'], list):
+        print("Detected multi-form response with entries array")
+        forms_data = []
+        for i, entry in enumerate(data['entries']):
+            print(f"Processing entry {i+1}: {entry}")
+            form_data, rows = process_single_form(entry, form_type)
+            # Create individual JSON for this form
+            individual_json = {
+                "form_type": data.get("form_type", "SUPERVISOR'S OVERTIME AUTHORIZATION"),
+                "entry": entry
+            }
+            forms_data.append((form_data, rows, json.dumps(individual_json)))
+        return forms_data, raw_gemini_json
+    else:
+        # Single form response
+        print("Processing as single form")
+        form_data, rows = process_single_form(data, form_type)
+        return [(form_data, rows, raw_gemini_json)], raw_gemini_json
+
+def process_single_form(data, form_type=None):
 
     # Normalize keys for mapping
     def normalize_key(k):
-        return k.lower().replace(" ", "_").replace(".", "").replace("#", "").replace("/", "_").replace("'", "").replace("-", "_")
+        # Handle special cases first
+        if k == "RC#":
+            return "rc"
+        if k == "REPORT LOC.":
+            return "report_loc"
+        if k == "S/M":
+            return "sm"
+        
+        # General normalization
+        normalized = k.lower().replace(" ", "_").replace(".", "").replace("#", "").replace("/", "_").replace("'", "").replace("-", "_")
+        return normalized
 
     # Full slot list for supervisor overtime form and exception claim (hourly) form
     all_fields = [
@@ -83,44 +116,61 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
         # Supervisor/Overtime fields (expanded variants for all possible Gemini outputs)
         "reg": "reg",
         "reg.": "reg",
+        "reg_assignment": "regular_assignment",
         "assignment": "pass_number",
         "pass": "pass_number",
+        "PASS": "pass_number",  # Direct mapping for original key
         "rc": "rc_number",
         "rc.": "rc_number",
         "rc#": "rc_number",
         "rc_#": "rc_number",
         "rc number": "rc_number",
+        "rc ": "rc_number",  # Handle RC with space
+        "RC#": "rc_number",  # Direct mapping for original key
         "employee_name": "employee_name",
         "employee name": "employee_name",
+        "EMPLOYEE NAME": "employee_name",  # Direct mapping for original key
         "job": "job_number",
         "job.": "job_number",
         "job#": "job_number",
         "job_#": "job_number",
         "job number": "job_number",
+        "JOB #": "job_number",  # Direct mapping for original key
         "overtime_location": "overtime_location",
         "overtime location": "overtime_location",
+        "OVERTIME LOCATION": "overtime_location",  # Direct mapping for original key
         "report_loc": "report_loc",
         "report_loc.": "report_loc",
+        "report_loc..": "report_loc",  # Handle double periods
         "report location": "report_loc",
+        "REPORT LOC.": "report_loc",  # Direct mapping for original key
         "report_time": "report_time",
         "report time": "report_time",
+        "REPORT TIME": "report_time",  # Direct mapping for original key
         "relief_time": "relief_time",
         "relief time": "relief_time",
+        "RELIEF TIME": "relief_time",  # Direct mapping for original key
         "overtime_hours": "overtime_hours",
         "overtime hours": "overtime_hours",
+        "OVERTIME HOURS": "overtime_hours",  # Direct mapping for original key
         "date": "todays_date",
         "date_of_overtime": "date_of_overtime",
         "date of overtime": "date_of_overtime",
         "rdo's": "rdos",
         "rdos": "rdos",
+        "sm": "rdos",  # Handle S/M field
+        "S/M": "rdos",  # Direct mapping for original key
         "reason_for_overtime": "reason_for_overtime",
         "reason for overtime": "reason_for_overtime",
+        "REASON FOR OVERTIME": "reason_for_overtime",  # Direct mapping for original key
         "comments": "comments",
+        "COMMENTS": "comments",  # Direct mapping for original key
         "acct": "acct_number",
         "acct.": "acct_number",
         "acct#": "acct_number",
         "acct_#": "acct_number",
         "acct number": "acct_number",
+        "ACCT #": "acct_number",  # Direct mapping for original key
         "amount": "amount",
         "supervisors_signature": "superintendent_authorization_signature",
         "supervisor's_signature": "superintendent_authorization_signature",
@@ -131,6 +181,27 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
         "superintendent_authorization_date": "superintendent_authorization_date",
         "superintendent's_authorization_-_date": "superintendent_authorization_date",
         "entered_into_uts": "entered_into_uts",
+        # Additional mappings for specific Gemini output formats
+        "reg_assignment": "regular_assignment",
+        "report_loc": "report_loc",
+        "report loc": "report_loc",
+        "report location": "report_loc",
+        "overtime_location": "overtime_location",
+        "overtime location": "overtime_location",
+        "report_time": "report_time",
+        "report time": "report_time",
+        "relief_time": "relief_time",
+        "relief time": "relief_time",
+        "overtime_hours": "overtime_hours",
+        "overtime hours": "overtime_hours",
+        "rdo's": "rdos",
+        "rdos": "rdos",
+        "reason_for_overtime": "reason_for_overtime",
+        "reason for overtime": "reason_for_overtime",
+        "acct": "acct_number",
+        "acct#": "acct_number",
+        "acct number": "acct_number",
+        "superintendent's_authorization": "superintendent_authorization",
         # Exception claim (hourly) fields
         "regular_assignment": "regular_assignment",
         "report": "report",
@@ -139,6 +210,7 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
         "today's_date": "todays_date",
         "pass_number": "pass_number",
         "title": "title",
+        "TITLE": "title",  # Direct mapping for original key
         "employee_name": "employee_name",
         "rdos": "rdos",
         "actual_ot_date": "actual_ot_date",
@@ -174,6 +246,29 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
         "superintendent_s_authorization___signature": "superintendent_authorization_signature",
         "entered_into_uts": "entered_into_uts"
     }
+    # Robust time/location field variants
+    key_map.update({
+        "report_time": "report_time",
+        "report time": "report_time",
+        "report-time": "report_time",
+        "report.time": "report_time",
+        "reporttime": "report_time",
+        "relief_time": "relief_time",
+        "relief time": "relief_time",
+        "relief-time": "relief_time",
+        "relief.time": "relief_time",
+        "relieftime": "relief_time",
+        "report_loc": "report_loc",
+        "report loc": "report_loc",
+        "report-loc": "report_loc",
+        "report.loc": "report_loc",
+        "reportloc": "report_loc",
+        "overtime_location": "overtime_location",
+        "overtime location": "overtime_location",
+        "overtime-location": "overtime_location",
+        "overtime.location": "overtime_location",
+        "overtimelocation": "overtime_location",
+    })
     # Checkbox mapping
     checkbox_map = {
         "rdo": "reason_rdo",
@@ -193,7 +288,19 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
         for k, v in d.items():
             new_key = f"{parent_key}_{k}" if parent_key else k
             if isinstance(v, dict):
-                items.extend(flatten(v, new_key).items())
+                # Special handling for supervisor nested fields
+                if parent_key.lower().startswith("superintendent's_authorization") or k.lower().startswith("superintendent's_authorization"):
+                    # Map nested keys directly to their backend fields
+                    for subk, subv in v.items():
+                        subkey_norm = normalize_key(f"superintendent's_authorization_-_{subk}")
+                        items.append((subkey_norm, subv))
+                elif k.lower() == "superintendent's_authorization":
+                    # Handle the nested superintendent authorization object
+                    for subk, subv in v.items():
+                        subkey_norm = normalize_key(f"superintendent's_authorization_-_{subk}")
+                        items.append((subkey_norm, subv))
+                else:
+                    items.extend(flatten(v, new_key).items())
             else:
                 items.append((new_key, v))
         return dict(items)
@@ -202,6 +309,7 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
     # Map fields
     for k, v in flat_data.items():
         norm_k = normalize_key(k)
+        print(f"Mapping: '{k}' -> '{norm_k}' = '{v}'")
         # Handle reason_for_overtime as string or list
         if norm_k == "reason_for_overtime":
             if isinstance(v, str):
@@ -230,6 +338,22 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
             form_data["rc_number"] = v
         elif norm_k == "report_loc":
             form_data["report_loc"] = v
+        elif norm_k == "reg_assignment":
+            form_data["regular_assignment"] = v
+        elif norm_k == "overtime_location":
+            form_data["overtime_location"] = v
+        elif norm_k == "report_time":
+            form_data["report_time"] = v
+        elif norm_k == "relief_time":
+            form_data["relief_time"] = v
+        elif norm_k == "overtime_hours":
+            form_data["overtime_hours"] = v
+        elif norm_k == "rdos":
+            form_data["rdos"] = v
+        elif norm_k == "sm":
+            form_data["rdos"] = v
+        elif norm_k == "acct":
+            form_data["acct_number"] = v
         elif norm_k in key_map:
             form_data[key_map[norm_k]] = v
         elif norm_k in checkbox_map:
@@ -337,36 +461,41 @@ def handle_upload(form_type):
                                 print("--- Gemini Output ---")
                                 print(gemini_output)
                                 print("--- END Gemini Output ---")
-                                form_data, rows = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ({}, [])
-                                # Always set file_name to the pass number if available, otherwise 'N/A'
-                                if form_data.get('pass_number'):
-                                    form_data['file_name'] = str(form_data['pass_number'])
-                                else:
-                                    form_data['file_name'] = 'N/A'
-                                if form_data:
-                                    required_form_fields = [
-                                        'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
-                                        'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
-                                        'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
-                                    ]
-                                    for key in required_form_fields:
-                                        if key not in form_data:
-                                            form_data[key] = 'N/A'
-                                    form_data['status'] = 'processed'
-                                else:
-                                    form_data = {key: '' for key in required_form_fields}
-                                    form_data['file_name'] = os.path.basename(img_path)
-                                    form_data['comments'] = f"Gemini extraction failed for {img_path}. Output: {gemini_output if gemini_output else 'None'}"
-                                    form_data['status'] = 'error'
-                                    if not rows:
-                                        rows = []
-                                upload_date = datetime.datetime.now().isoformat()
-                                form_id = store_exception_form(form_data, rows, username, form_type=form_type, upload_date=upload_date)
-                                if not form_id:
-                                    failed += 1
-                                    continue
-                                log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
-                                success += 1
+                                forms_data, raw_gemini_json = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ([], '')
+                                
+                                # Process each form from the response
+                                for form_data, rows, individual_json in forms_data:
+                                    # Use the individual_json for the raw_gemini_json
+                                    form_data['raw_gemini_json'] = individual_json
+                                    # Always set file_name to the pass number if available, otherwise 'N/A'
+                                    if form_data.get('pass_number'):
+                                        form_data['file_name'] = str(form_data['pass_number'])
+                                    else:
+                                        form_data['file_name'] = 'N/A'
+                                    if form_data:
+                                        required_form_fields = [
+                                            'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
+                                            'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
+                                            'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
+                                        ]
+                                        for key in required_form_fields:
+                                            if key not in form_data:
+                                                form_data[key] = 'N/A'
+                                        form_data['status'] = 'processed'
+                                    else:
+                                        form_data = {key: '' for key in required_form_fields}
+                                        form_data['file_name'] = os.path.basename(img_path)
+                                        form_data['comments'] = f"Gemini extraction failed for {img_path}. Output: {gemini_output if gemini_output else 'None'}"
+                                        form_data['status'] = 'error'
+                                        if not rows:
+                                            rows = []
+                                    upload_date = datetime.datetime.now().isoformat()
+                                    form_id = store_exception_form(form_data, rows, username, form_type=form_type, upload_date=upload_date)
+                                    if not form_id:
+                                        failed += 1
+                                        continue
+                                    log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
+                                    success += 1
                     continue  # Skip the rest of the loop for supervisor PDFs
 
                 # Default: process as a single file (for hourly or non-PDF supervisor uploads)
@@ -374,33 +503,38 @@ def handle_upload(form_type):
                 print("--- Gemini Output ---")
                 print(gemini_output)
                 print("--- END Gemini Output ---")
-                form_data, rows = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ({}, [])
-                # Always set file_name to the uploaded file name
-                form_data['file_name'] = file.filename
-                if form_data:
-                    required_form_fields = [
-                        'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
-                        'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
-                        'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
-                    ]
-                    for key in required_form_fields:
-                        if key not in form_data:
-                            form_data[key] = 'N/A'
-                    form_data['status'] = 'processed'
-                else:
-                    form_data = {key: '' for key in required_form_fields}
+                forms_data, raw_gemini_json = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ([], '')
+                
+                # Process each form from the response
+                for form_data, rows, individual_json in forms_data:
+                    # Use the individual_json for the raw_gemini_json
+                    form_data['raw_gemini_json'] = individual_json
+                    # Always set file_name to the uploaded file name
                     form_data['file_name'] = file.filename
-                    form_data['comments'] = f"Gemini extraction failed for {file.filename}. Output: {gemini_output if gemini_output else 'None'}"
-                    form_data['status'] = 'error'
-                    if not rows:
-                        rows = []
-                upload_date = datetime.datetime.now().isoformat()
-                form_id = store_exception_form(form_data, rows, username, form_type=form_type, upload_date=upload_date)
-                if not form_id:
-                    failed += 1
-                    continue
-                log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
-                success += 1
+                    if form_data:
+                        required_form_fields = [
+                            'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
+                            'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
+                            'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
+                        ]
+                        for key in required_form_fields:
+                            if key not in form_data:
+                                form_data[key] = 'N/A'
+                        form_data['status'] = 'processed'
+                    else:
+                        form_data = {key: '' for key in required_form_fields}
+                        form_data['file_name'] = file.filename
+                        form_data['comments'] = f"Gemini extraction failed for {file.filename}. Output: {gemini_output if gemini_output else 'None'}"
+                        form_data['status'] = 'error'
+                        if not rows:
+                            rows = []
+                    upload_date = datetime.datetime.now().isoformat()
+                    form_id = store_exception_form(form_data, rows, username, form_type=form_type, upload_date=upload_date)
+                    if not form_id:
+                        failed += 1
+                        continue
+                    log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
+                    success += 1
             except Exception as e:
                 print(f"Error processing file {file.filename}: {e}")
                 failed += 1
@@ -527,8 +661,28 @@ def get_dashboard_data():
                 c.execute('SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows')
             rows = c.fetchall()
 
-            # Overtime
-            total_minutes = sum(safe_int(hh) * 60 + safe_int(mm) for _, hh, mm, _, _ in rows)
+            # Overtime calculation - handle differently for supervisor vs hourly forms
+            if form_type == 'supervisor':
+                # For supervisor forms, get overtime from the overtime_hours field
+                c.execute('SELECT overtime_hours FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
+                overtime_entries = c.fetchall()
+                total_minutes = 0
+                for (overtime_hours,) in overtime_entries:
+                    if overtime_hours and overtime_hours != 'N/A':
+                        try:
+                            # Parse HH:MM format
+                            if ':' in str(overtime_hours):
+                                hours, minutes = str(overtime_hours).split(':')
+                                total_minutes += int(hours) * 60 + int(minutes)
+                            else:
+                                # If just a number, assume it's hours
+                                total_minutes += int(overtime_hours) * 60
+                        except:
+                            continue
+            else:
+                # For hourly forms, calculate from rows
+                total_minutes = sum(safe_int(hh) * 60 + safe_int(mm) for _, hh, mm, _, _ in rows)
+            
             total_overtime_hh = total_minutes // 60
             total_overtime_mm = total_minutes % 60
 
@@ -549,12 +703,19 @@ def get_dashboard_data():
 
             # Most relevant location
             if form_type == 'supervisor':
-                c.execute('SELECT report FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
-                reports = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
+                # For supervisor forms, use report_loc or overtime_location
+                c.execute('SELECT report_loc, overtime_location FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
+                location_entries = c.fetchall()
+                locations = []
+                for report_loc, overtime_location in location_entries:
+                    if report_loc and report_loc != 'N/A':
+                        locations.append(report_loc)
+                    elif overtime_location and overtime_location != 'N/A':
+                        locations.append(overtime_location)
                 most_location, most_location_count = ('N/A', 0)
-                if reports:
+                if locations:
                     from collections import Counter
-                    most_location, most_location_count = Counter(reports).most_common(1)[0]
+                    most_location, most_location_count = Counter(locations).most_common(1)[0]
             else:
                 locations = [loc for _, _, _, _, loc in rows if loc]
                 most_location, most_location_count = ('N/A', 0)
@@ -825,6 +986,7 @@ def export_forms():
 
 if __name__ == "__main__":
     init_audit_db()
+    init_exception_form_db()
     app.run(port=8000, debug=True)
 
     

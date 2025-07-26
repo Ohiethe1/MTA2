@@ -63,11 +63,17 @@ def init_exception_form_db():
             relief TEXT,
             todays_date TEXT,
             status TEXT DEFAULT 'processed',
+            username TEXT,
+            ocr_lines TEXT,
+            form_type TEXT,
+            upload_date TEXT,
+            file_name TEXT,
             reg TEXT,
             superintendent_authorization_signature TEXT,
             superintendent_authorization_pass TEXT,
             superintendent_authorization_date TEXT,
-            entered_into_uts TEXT
+            entered_into_uts TEXT,
+            raw_gemini_json TEXT
         )
     ''')
     c.execute('''
@@ -92,6 +98,155 @@ def init_exception_form_db():
             FOREIGN KEY(form_id) REFERENCES exception_forms(id)
         )
     ''')
+    
+    # Add missing columns to existing table if they don't exist
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN username TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN ocr_lines TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN form_type TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN upload_date TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN file_name TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reg TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN superintendent_authorization_signature TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN superintendent_authorization_pass TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN superintendent_authorization_date TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN entered_into_uts TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN raw_gemini_json TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Add supervisor-specific columns
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN overtime_hours TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN report_loc TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN overtime_location TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN report_time TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN relief_time TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN date_of_overtime TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN job_number TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN rc_number TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN acct_number TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Add reason fields
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_rdo BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_absentee_coverage BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_no_lunch BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_early_report BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_late_clear BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_save_as_oto BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_capital_support_go BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN reason_other BOOLEAN DEFAULT FALSE")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN amount TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     conn.commit()
     conn.close()
 
@@ -162,44 +317,15 @@ def store_exception_form(form_data, rows, username, form_type=None, upload_date=
     import sqlite3
     with sqlite3.connect('forms.db', timeout=10) as conn:
         c = conn.cursor()
-        # Ensure upload_date and form_type columns exist
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS exception_forms (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pass_number TEXT,
-                title TEXT,
-                employee_name TEXT,
-                rdos TEXT,
-                actual_ot_date TEXT,
-                div TEXT,
-                comments TEXT,
-                supervisor_name TEXT,
-                supervisor_pass_no TEXT,
-                oto TEXT,
-                oto_amount_saved TEXT,
-                entered_in_uts TEXT,
-                regular_assignment TEXT,
-                report TEXT,
-                relief TEXT,
-                todays_date TEXT,
-                status TEXT,
-                username TEXT,
-                ocr_lines TEXT,
-                form_type TEXT,
-                upload_date TEXT,
-                file_name TEXT,
-                reg TEXT,
-                superintendent_authorization_signature TEXT,
-                superintendent_authorization_pass TEXT,
-                superintendent_authorization_date TEXT,
-                entered_into_uts TEXT
-            )
-        """)
+        # Ensure the database is properly initialized
+        init_exception_form_db()
         # Insert form with form_type and upload_date
         c.execute('''
             INSERT INTO exception_forms (
-                pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json,
+                overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, amount,
+                reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             form_data.get('pass_number', ''),
             form_data.get('title', ''),
@@ -227,7 +353,26 @@ def store_exception_form(form_data, rows, username, form_type=None, upload_date=
             form_data.get('superintendent_authorization_signature', ''),
             form_data.get('superintendent_authorization_pass', ''),
             form_data.get('superintendent_authorization_date', ''),
-            form_data.get('entered_into_uts', '')
+            form_data.get('entered_into_uts', ''),
+            form_data.get('raw_gemini_json', ''),
+            form_data.get('overtime_hours', ''),
+            form_data.get('report_loc', ''),
+            form_data.get('overtime_location', ''),
+            form_data.get('report_time', ''),
+            form_data.get('relief_time', ''),
+            form_data.get('date_of_overtime', ''),
+            form_data.get('job_number', ''),
+            form_data.get('rc_number', ''),
+            form_data.get('acct_number', ''),
+            form_data.get('amount', ''),
+            form_data.get('reason_rdo', False),
+            form_data.get('reason_absentee_coverage', False),
+            form_data.get('reason_no_lunch', False),
+            form_data.get('reason_early_report', False),
+            form_data.get('reason_late_clear', False),
+            form_data.get('reason_save_as_oto', False),
+            form_data.get('reason_capital_support_go', False),
+            form_data.get('reason_other', False)
         ))
         form_id = c.lastrowid
         # Insert rows if any
