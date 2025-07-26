@@ -169,6 +169,17 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
     });
   };
 
+  // Helper to format time with colon
+  const formatTime = (timeString: string) => {
+    if (!timeString) return 'N/A';
+    // Remove any non-digit characters and ensure it's 4 digits
+    const cleanTime = timeString.toString().replace(/\D/g, '');
+    if (cleanTime.length === 4) {
+      return `${cleanTime.slice(0, 2)}:${cleanTime.slice(2)}`;
+    }
+    return timeString; // Return original if not 4 digits
+  };
+
   const handleViewForm = (form: FormData) => {
     // setSelectedForm(form); // This state is removed
     // setShowModal(true); // This state is removed
@@ -1056,7 +1067,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                                 <div><span className="font-medium">Exception Time To:</span> {row.exception_time_to_hh || '0'}:{row.exception_time_to_mm || '00'}</div>
                                 <div><span className="font-medium">Overtime:</span> {row.overtime_hh || '0'}h {row.overtime_mm || '0'}m</div>
                                 <div><span className="font-medium">Bonus:</span> {row.bonus_hh || '0'}h {row.bonus_mm || '0'}m</div>
-                                <div><span className="font-medium">Night Differential:</span> {row.nite_diff_hh || '0'}h {row.nite_diff_mm || '0'}m</div>
+                                <div><span className="font-medium">Nite Diff:</span> {row.nite_diff_hh || '0'}h {row.nite_diff_mm || '0'}m</div>
                                 <div><span className="font-medium">TA Job No.:</span> {row.ta_job_no || 'N/A'}</div>
                               </div>
                             </div>
@@ -1098,8 +1109,8 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                             <div><span className="font-medium">RC Number:</span> {selectedFormDetails.form.rc_number || 'N/A'}</div>
                             <div><span className="font-medium">Report Location:</span> {selectedFormDetails.form.report_loc || 'N/A'}</div>
                             <div><span className="font-medium">Overtime Location:</span> {selectedFormDetails.form.overtime_location || 'N/A'}</div>
-                            <div><span className="font-medium">Report Time:</span> {selectedFormDetails.form.report_time || 'N/A'}</div>
-                            <div><span className="font-medium">Relief Time:</span> {selectedFormDetails.form.relief_time || 'N/A'}</div>
+                            <div><span className="font-medium">Report Time:</span> {formatTime(selectedFormDetails.form.report_time)}</div>
+                            <div><span className="font-medium">Relief Time:</span> {formatTime(selectedFormDetails.form.relief_time)}</div>
                             <div><span className="font-medium">Date of Overtime:</span> {selectedFormDetails.form.date_of_overtime || 'N/A'}</div>
                             <div><span className="font-medium">Overtime Hours:</span> {selectedFormDetails.form.overtime_hours || 'N/A'}</div>
                             <div><span className="font-medium">Account Number:</span> {selectedFormDetails.form.acct_number || 'N/A'}</div>
@@ -1299,7 +1310,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                               </div>
                             </div>
                             <div>
-                              <span className="font-medium">Night Differential:</span>
+                              <span className="font-medium">Nite Diff:</span>
                               <div className="flex gap-1 mt-1">
                                 <input 
                                   value={row.nite_diff_hh || ''} 
@@ -1347,8 +1358,8 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                       <div><span className="font-medium">RC Number:</span> <input name="rc_number" value={editForm.rc_number || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
                       <div><span className="font-medium">Report Location:</span> <input name="report_loc" value={editForm.report_loc || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
                       <div><span className="font-medium">Overtime Location:</span> <input name="overtime_location" value={editForm.overtime_location || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
-                      <div><span className="font-medium">Report Time:</span> <input name="report_time" value={editForm.report_time || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
-                      <div><span className="font-medium">Relief Time:</span> <input name="relief_time" value={editForm.relief_time || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
+                      <div><span className="font-medium">Report Time:</span> <input name="report_time" value={editForm.report_time || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" placeholder="HHMM (e.g., 0430)" /></div>
+                      <div><span className="font-medium">Relief Time:</span> <input name="relief_time" value={editForm.relief_time || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" placeholder="HHMM (e.g., 1415)" /></div>
                       <div><span className="font-medium">Date of Overtime:</span> <input name="date_of_overtime" value={editForm.date_of_overtime || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
                       <div><span className="font-medium">Overtime Hours:</span> <input name="overtime_hours" value={editForm.overtime_hours || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
                       <div><span className="font-medium">Account Number:</span> <input name="acct_number" value={editForm.acct_number || ''} onChange={handleEditFormChange} className="border rounded p-2 w-full" /></div>
