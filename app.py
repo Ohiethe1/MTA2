@@ -989,6 +989,13 @@ def calculate_dashboard_stats_with_raw_data(forms, form_type=None, extraction_mo
                                 total_minutes += int(overtime_hours) * 60
                         except:
                             pass
+                    
+                    # --- Flexible Job Number Extraction (Supervisor) ---
+                    job_num = get_flexible_field(raw_json, [
+                        'job', 'job_number', 'job no', 'job_no', 'job#', 'job number', 'ta_job_no', 'ta job no', 'jobnum', 'jobnumber', 'job id', 'jobid'
+                    ])
+                    if job_num and job_num != 'N/A':
+                        job_numbers.append(str(job_num))
                 elif current_form_type_for_processing == 'hourly':
                     # Look for overtime in rows or direct fields
                     rows = raw_json.get('rows', [])
