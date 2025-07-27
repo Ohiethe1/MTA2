@@ -182,8 +182,14 @@ def extract_single_form_pure(data: Dict[str, Any], form_type: str) -> Tuple[Dict
     # but don't enforce strict mapping
     if 'employee_name' in data:
         form_data['employee_name'] = data['employee_name']
-    if 'pass_number' in data:
-        form_data['pass_number'] = data['pass_number']
+    
+    # Flexible pass number extraction
+    pass_number = get_flexible_field(data, [
+        'pass_number', 'pass', 'PASS', 'pass_no', 'pass no', 'passnumber', 'pass number'
+    ])
+    if pass_number:
+        form_data['pass_number'] = pass_number
+    
     if 'title' in data:
         form_data['title'] = data['title']
     if 'comments' in data:
