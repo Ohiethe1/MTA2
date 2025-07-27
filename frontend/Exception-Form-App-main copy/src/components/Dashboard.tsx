@@ -653,7 +653,6 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 <span className="ml-1 px-1 py-0.5 bg-yellow-500 text-white text-xs rounded-full font-bold">BETA</span>
               )}
             </span>
-            <span className="text-xs opacity-75">(Forms stored in both modes)</span>
           </div>
         </div>
       </div>
@@ -1214,7 +1213,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 <>
 
                   {/* Hourly Exception Form Details (View Mode) */}
-                  {(filterType === 'hourly' || (!filterType && selectedFormDetails.form.form_type !== 'supervisor')) && !isEditing && selectedFormDetails && selectedFormDetails.form && (
+                  {(filterType === 'hourly' || (!filterType && selectedFormDetails.form.form_type !== 'supervisor')) && !isEditing && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
                     <div className="mb-4">
                       <div className="flex justify-between items-center mb-4">
                         <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Hourly Exception Claim Form Info</h4>
@@ -1286,7 +1285,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                               onClick={handleEditRawJson}
                               className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors shadow-sm"
                             >
-                              Edit Raw JSON
+                              Edit
                             </button>
                           </div>
                           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -1329,7 +1328,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                   )}
 
 
-                  {(filterType === 'supervisor' || (!filterType && selectedFormDetails.form.form_type === 'supervisor')) && selectedFormDetails && selectedFormDetails.form && (
+                  {(filterType === 'supervisor' || (!filterType && selectedFormDetails.form.form_type === 'supervisor')) && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
                     <div className="mb-6">
                       {/* Supervisor Form Details (View Mode) */}
                       <div className="mb-6">
@@ -1368,33 +1367,32 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                           <div className="mb-4">
                             <span className="font-medium">Reason for Overtime:</span>
                             <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_rdo == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_rdo == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 RDO {selectedFormDetails.form.reason_rdo == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_absentee_coverage == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_absentee_coverage == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 Absentee Coverage {selectedFormDetails.form.reason_absentee_coverage == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_no_lunch == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_no_lunch == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 No Lunch {selectedFormDetails.form.reason_no_lunch == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_early_report == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_early_report == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 Early Report {selectedFormDetails.form.reason_early_report == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_late_clear == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_late_clear == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 Late Clear {selectedFormDetails.form.reason_late_clear == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_save_as_oto == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_save_as_oto == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 Save as OTO {selectedFormDetails.form.reason_save_as_oto == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_capital_support_go == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_capital_support_go == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 Capital Support/GO {selectedFormDetails.form.reason_capital_support_go == 1 ? '✓' : '✗'}
                               </div>
-                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_other == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <div className={`px-3 py-2 rounded-lg text-sm ${selectedFormDetails.form.reason_other == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}> 
                                 Other {selectedFormDetails.form.reason_other == 1 ? '✓' : '✗'}
                               </div>
                             </div>
                           </div>
-                          
                           <div className="mb-4">
                             <span className="font-medium">Comments:</span>
                             <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem] mt-1">{selectedFormDetails.form.comments || 'N/A'}</div>

@@ -569,6 +569,22 @@ def is_blank_or_crossed_out(image_path):
         print(f"Error in blank/crossed-out detection: {e}")
     return False
 
+# Flexible field lookup for raw JSON
+
+def get_flexible_field(data, possible_keys):
+    """
+    Search for a value in a dict by a list of possible field names (case-insensitive, with normalization).
+    Handles flat dicts only. For nested dicts, extend as needed.
+    """
+    def normalize(s):
+        return s.lower().replace(' ', '').replace('_', '').replace('-', '')
+    norm_data = {normalize(k): v for k, v in data.items()}
+    for key in possible_keys:
+        norm_key = normalize(key)
+        if norm_key in norm_data:
+            return norm_data[norm_key]
+    return None
+
 @app.route('/upload/hourly', methods=['POST'])
 def upload_hourly_file():
     return handle_upload(form_type='hourly')
@@ -790,9 +806,10 @@ def get_dashboard_data():
                 if extraction_mode_filter == 'pure':
                     c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed" AND extraction_mode = ?', (extraction_mode_filter,))
                 elif extraction_mode_filter == 'mapped':
-                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed" AND (extraction_mode = ? OR extraction_mode IS NULL)', (extraction_mode_filter,))
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND (extraction_mode = ? OR extraction_mode IS NULL)', (extraction_mode_filter,))
                 else:
-                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed"')
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed"')
+            
             forms = c.fetchall()
             
             # Calculate statistics using the new filtered function
@@ -853,11 +870,7 @@ def calculate_dashboard_stats_with_raw_data(forms, form_type=None, extraction_mo
     """
     Calculate dashboard statistics that works with both pure and mapped extraction modes.
     For pure extraction, it parses the raw_extracted_data JSON to extract statistics.
-    
-    Args:
-        forms: List of form data
-        form_type: 'hourly', 'supervisor', or None for all
-        extraction_mode_filter: 'pure', 'mapped', or None for all modes
+    Now uses flexible field lookup for raw JSON.
     """
     import json
     from collections import Counter
@@ -907,16 +920,24 @@ def calculate_dashboard_stats_with_raw_data(forms, form_type=None, extraction_mo
         
         if extraction_mode == 'pure' and raw_data:
             try:
-                # Parse raw Gemini data for pure extraction mode
                 raw_json = json.loads(raw_data)
-                
-                # Extract overtime information
+                # --- Flexible Overtime Extraction ---
                 if current_form_type_for_processing == 'supervisor':
-                    # Look for overtime hours in raw data
-                    overtime_hours = raw_json.get('overtime_hours') or raw_json.get('overtime') or raw_json.get('hours')
+                    overtime_hours = get_flexible_field(raw_json, [
+                        'overtime_hours', 'overtime', 'hours', 'ot_hours', 'ot', 'total_overtime'
+                    ])
                     if overtime_hours and overtime_hours != 'N/A':
                         try:
-                            if ':' in str(overtime_hours):
+                            if '+' in str(overtime_hours):
+                                parts = str(overtime_hours).split('+')
+                                for part in parts:
+                                    part = part.strip()
+                                    if ':' in part:
+                                        hours, minutes = part.split(':')
+                                        total_minutes += int(hours) * 60 + int(minutes)
+                                    else:
+                                        total_minutes += int(part) * 60
+                            elif ':' in str(overtime_hours):
                                 hours, minutes = str(overtime_hours).split(':')
                                 total_minutes += int(hours) * 60 + int(minutes)
                             else:
@@ -928,35 +949,84 @@ def calculate_dashboard_stats_with_raw_data(forms, form_type=None, extraction_mo
                     rows = raw_json.get('rows', [])
                     for row in rows:
                         if isinstance(row, dict):
-                            hh = safe_int(row.get('overtime_hh', 0))
-                            mm = safe_int(row.get('overtime_mm', 0))
-                            total_minutes += hh * 60 + mm
-                
-                # Extract job numbers
-                if current_form_type_for_processing == 'supervisor':
-                    job_num = raw_json.get('job_number') or raw_json.get('job') or raw_json.get('job_no')
-                    if job_num and job_num != 'N/A':
-                        job_numbers.append(str(job_num))
-                elif current_form_type_for_processing == 'hourly':
-                    rows = raw_json.get('rows', [])
-                    for row in rows:
-                        if isinstance(row, dict):
-                            ta_job = row.get('ta_job_no') or row.get('job_no')
+                            # --- Flexible Overtime Extraction (Hourly Row) ---
+                            hh = get_flexible_field(row, ['overtime_hh', 'ot_hh', 'hh'])
+                            mm = get_flexible_field(row, ['overtime_mm', 'ot_mm', 'mm'])
+                            print('Hourly row:', row)
+                            print('Extracted overtime:', hh, mm)
+                            try:
+                                total_minutes += safe_int(hh) * 60 + safe_int(mm)
+                            except:
+                                pass
+                            # --- Flexible Job Number Extraction (Hourly Row) ---
+                            ta_job = get_flexible_field(row, [
+                                'ta_job_no', 'job_no', 'jobnumber', 'jobnum'
+                            ])
                             if ta_job and ta_job != 'N/A':
                                 job_numbers.append(str(ta_job))
-                
-                # Extract positions/titles
+                            # --- Flexible Location Extraction (Hourly Row) ---
+                            line_loc = get_flexible_field(row, [
+                                'line_location', 'location', 'line', 'loc', 'line_loc'
+                            ])
+                            if line_loc and line_loc != 'N/A':
+                                locations.append(line_loc)
+                    # Also check for overtime, job number, and location at the top level (in case some forms store them there)
+                    hh_top = get_flexible_field(raw_json, ['overtime_hh', 'ot_hh', 'hh'])
+                    mm_top = get_flexible_field(raw_json, ['overtime_mm', 'ot_mm', 'mm'])
+                    try:
+                        total_minutes += safe_int(hh_top) * 60 + safe_int(mm_top)
+                    except:
+                        pass
+                    # Also check for overtime_hours at the top level (e.g., "00:30")
+                    overtime_hours_top = get_flexible_field(raw_json, [
+                        'overtime_hours', 'overtime', 'hours', 'ot_hours', 'ot', 'total_overtime'
+                    ])
+                    if overtime_hours_top and overtime_hours_top != 'N/A':
+                        try:
+                            if '+' in str(overtime_hours_top):
+                                parts = str(overtime_hours_top).split('+')
+                                for part in parts:
+                                    part = part.strip()
+                                    if ':' in part:
+                                        hours, minutes = part.split(':')
+                                        total_minutes += int(hours) * 60 + int(minutes)
+                                    else:
+                                        total_minutes += int(part) * 60
+                            elif ':' in str(overtime_hours_top):
+                                hours, minutes = str(overtime_hours_top).split(':')
+                                total_minutes += int(hours) * 60 + int(minutes)
+                            else:
+                                total_minutes += int(overtime_hours_top) * 60
+                        except:
+                            pass
+                    # --- NEW: Also check for job number and location at the top level ---
+                    ta_job_top = get_flexible_field(raw_json, [
+                        'ta_job_no', 'job_no', 'jobnumber', 'jobnum', 'job number', 'TA Job No', 'TA Job Number'
+                    ])
+                    if ta_job_top and ta_job_top != 'N/A':
+                        job_numbers.append(str(ta_job_top))
+                    line_loc_top = get_flexible_field(raw_json, [
+                        'line_location', 'location', 'line', 'loc', 'line_loc', 'report_station'
+                    ])
+                    if line_loc_top and line_loc_top != 'N/A':
+                        locations.append(line_loc_top)
+                # --- Flexible Position/Title Extraction ---
                 if current_form_type_for_processing == 'supervisor':
                     positions.append('Supervisor')
                 else:
-                    title = raw_json.get('title') or raw_json.get('position')
+                    title = get_flexible_field(raw_json, [
+                        'title', 'position', 'job_title', 'role'
+                    ])
                     if title and title != 'N/A':
                         positions.append(title)
-                
-                # Extract locations
+                # --- Flexible Location Extraction ---
                 if current_form_type_for_processing == 'supervisor':
-                    report_loc = raw_json.get('report_loc') or raw_json.get('report_location')
-                    overtime_loc = raw_json.get('overtime_location') or raw_json.get('location')
+                    report_loc = get_flexible_field(raw_json, [
+                        'report_loc', 'report_location', 'location', 'reportloc', 'report', 'loc'
+                    ])
+                    overtime_loc = get_flexible_field(raw_json, [
+                        'overtime_location', 'location', 'overtimelocation', 'ot_location', 'otloc'
+                    ])
                     if report_loc and report_loc != 'N/A':
                         locations.append(report_loc)
                     if overtime_loc and overtime_loc != 'N/A':
@@ -965,13 +1035,18 @@ def calculate_dashboard_stats_with_raw_data(forms, form_type=None, extraction_mo
                     rows = raw_json.get('rows', [])
                     for row in rows:
                         if isinstance(row, dict):
-                            line_loc = row.get('line_location') or row.get('location')
+                            line_loc = get_flexible_field(row, [
+                                'line_location', 'location', 'line', 'loc', 'line_loc'
+                            ])
                             if line_loc and line_loc != 'N/A':
                                 locations.append(line_loc)
-                
-                # Extract reason counts for supervisor forms
+                # --- Flexible Reason Extraction (Supervisor) ---
                 if current_form_type_for_processing == 'supervisor':
-                    reasons = raw_json.get('reason_for_overtime', [])
+                    reasons = get_flexible_field(raw_json, [
+                        'reason_for_overtime', 'reason', 'overtime_reason', 'reasonovertime', 'reasonforot'
+                    ])
+                    if isinstance(reasons, str):
+                        reasons = [reasons]
                     if isinstance(reasons, list):
                         for reason in reasons:
                             reason_lower = str(reason).lower()
@@ -991,7 +1066,6 @@ def calculate_dashboard_stats_with_raw_data(forms, form_type=None, extraction_mo
                                 reason_counts['reason_capital_support_go'] += 1
                             else:
                                 reason_counts['reason_other'] += 1
-                
             except json.JSONDecodeError:
                 # Fall back to mapped fields if JSON parsing fails
                 pass
