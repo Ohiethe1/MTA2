@@ -326,6 +326,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   };
 
   const handleEditRawJson = () => {
+    console.log('Edit Raw JSON button clicked');
     if (selectedFormDetails?.form?.raw_gemini_json) {
       try {
         const parsed = JSON.parse(selectedFormDetails.form.raw_gemini_json);
@@ -630,14 +631,17 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <h1
-            className="text-3xl font-bold text-gray-900"
+            className="text-3xl font-bold text-gray-900 flex items-center"
             style={filterType === 'supervisor' ? { wordSpacing: '0.12em' } : {}}
           >
             {filterType === 'hourly'
               ? 'Exception Claim Dashboard'
               : filterType === 'supervisor'
                 ? 'Overtime Authorization Forms Dashboard (Supervisors)'
-                : heading || 'MTA Forms Dashboard'}
+                : (heading ? heading.replace(/\s*\(BETA\)/i, '') : 'MTA Forms Dashboard')}
+            {(heading && heading.toLowerCase().includes('dashboard')) && (
+              <span className="ml-3 px-3 py-1 bg-yellow-500 text-white text-sm rounded-full font-bold align-middle">BETA</span>
+            )}
           </h1>
           <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
             extractionMode === 'pure' 
@@ -658,11 +662,11 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       </div>
 
       {/* Tracker Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8 items-stretch">
         {/* General Dashboard Cards */}
         {!filterType && (
           <>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -677,7 +681,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
@@ -692,7 +696,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
@@ -710,7 +714,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
@@ -730,7 +734,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
@@ -764,7 +768,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         {/* Hourly Employees Dashboard Cards */}
         {filterType === 'hourly' && (
           <>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -779,7 +783,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
@@ -794,7 +798,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
@@ -812,7 +816,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
@@ -832,7 +836,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
@@ -858,7 +862,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         {/* Supervisor Dashboard Cards */}
         {filterType === 'supervisor' && (
           <>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -873,7 +877,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
@@ -889,7 +893,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
               </div>
             </div>
             {/* Only show Most Common Reason for Overtime if supervisor dashboard */}
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
@@ -911,7 +915,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
               </div>
             </div>
             {/* Most Relevant Line/Location for supervisor forms only */}
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow">
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
               <div className="flex items-start space-x-4">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
@@ -1279,27 +1283,57 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                               </p>
                             </div>
                           )}
-                          <div className="flex justify-between items-center mb-4">
-                            <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Raw Gemini Extraction Data</h4>
-                            <button
-                              onClick={handleEditRawJson}
-                              className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors shadow-sm"
-                            >
-                              Edit
-                            </button>
-                          </div>
-                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                            <pre className="text-sm text-gray-800 whitespace-pre-wrap overflow-x-auto">
-                              {(() => {
-                                try {
-                                  const parsed = JSON.parse(selectedFormDetails.form.raw_extracted_data);
-                                  return JSON.stringify(parsed, null, 2);
-                                } catch {
-                                  return selectedFormDetails.form.raw_extracted_data;
-                                }
-                              })()}
-                            </pre>
-                          </div>
+                          {isEditingRawJson ? (
+                            <div className="mb-4">
+                              <textarea
+                                className="w-full h-64 border rounded p-2 font-mono text-sm"
+                                value={rawJsonEdit}
+                                onChange={e => setRawJsonEdit(e.target.value)}
+                                readOnly={false}
+                                autoFocus
+                              />
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={handleSaveRawJson}
+                                  className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors shadow-sm"
+                                  disabled={saveLoading}
+                                >
+                                  {saveLoading ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={handleCancelRawJson}
+                                  className="bg-gray-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors shadow-sm"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                              {saveError && <div className="text-red-600 text-sm mt-2">{saveError}</div>}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between items-center mb-4">
+                                <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Raw Gemini Extraction Data</h4>
+                                <button
+                                  onClick={handleEditRawJson}
+                                  className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors shadow-sm"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <pre className="text-sm text-gray-800 whitespace-pre-wrap overflow-x-auto">
+                                  {(() => {
+                                    try {
+                                      const parsed = JSON.parse(selectedFormDetails.form.raw_extracted_data);
+                                      return JSON.stringify(parsed, null, 2);
+                                    } catch {
+                                      return selectedFormDetails.form.raw_extracted_data;
+                                    }
+                                  })()}
+                                </pre>
+                              </div>
+                            </>
+                          )}
                         </>
                       ) : selectedFormDetails.noRawDataAvailable ? (
                         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">

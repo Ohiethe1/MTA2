@@ -54,7 +54,7 @@ function App() {
               <div className="min-h-screen bg-gray-50">
                 <Header />
                 <main className="container mx-auto px-4 py-8">
-                  <Dashboard heading="General Dashboard" />
+                  <Dashboard heading="General Dashboard (BETA)" />
                 </main>
               </div>
             </ProtectedRoute>
