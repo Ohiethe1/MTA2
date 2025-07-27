@@ -997,11 +997,13 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
             <button
               onClick={handleExport}
               className="bg-gradient-to-r from-blue-500 to-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition-colors relative group text-sm"
-              title="Download a CSV of all forms in the system"
+              title={filterType ? `Download a CSV of all ${filterType} forms` : "Download a CSV of all forms in the system"}
             >
               <svg className="w-4 h-4 inline-block mr-2 -mt-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" /></svg>
-              Export All Forms (CSV)
-              <span className="absolute left-1/2 -bottom-7 -translate-x-1/2 bg-gray-800 text-xs text-white rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">Exports all forms, not just filtered results</span>
+              {filterType ? `Export ${filterType.charAt(0).toUpperCase() + filterType.slice(1)} Forms (CSV)` : 'Export All Forms (CSV)'}
+              <span className="absolute left-1/2 -bottom-7 -translate-x-1/2 bg-gray-800 text-xs text-white rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                {filterType ? `Exports all ${filterType} forms` : "Exports all forms, not just filtered results"}
+              </span>
             </button>
           </div>
         </div>
