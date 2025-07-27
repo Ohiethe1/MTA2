@@ -73,7 +73,9 @@ def init_exception_form_db():
             superintendent_authorization_pass TEXT,
             superintendent_authorization_date TEXT,
             entered_into_uts TEXT,
-            raw_gemini_json TEXT
+            raw_gemini_json TEXT,
+            raw_extracted_data TEXT,
+            extraction_mode TEXT
         )
     ''')
     c.execute('''
@@ -152,6 +154,16 @@ def init_exception_form_db():
     
     try:
         c.execute("ALTER TABLE exception_forms ADD COLUMN raw_gemini_json TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN raw_extracted_data TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        c.execute("ALTER TABLE exception_forms ADD COLUMN extraction_mode TEXT")
     except sqlite3.OperationalError:
         pass  # Column already exists
     

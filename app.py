@@ -14,6 +14,11 @@ import datetime
 import pdfplumber
 from PIL import Image
 import io
+import json
+from typing import Dict, Any, List, Tuple
+
+# Configuration flag for extraction mode
+PURE_GEMINI_EXTRACTION = False  # Set to True to use pure extraction
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -80,6 +85,146 @@ def clean_and_map_gemini_output(gemini_output, form_type=None):
         # Single form response
         print("Processing as single form")
         form_data, rows = process_single_form(data, form_type)
+        return [(form_data, rows, raw_gemini_json)], raw_gemini_json
+
+def process_gemini_extraction_hybrid(gemini_output: str, form_type: str = None) -> Tuple[Dict[str, Any], List[Dict[str, Any]], str]:
+    """
+    Hybrid approach: Store both mapped fields and raw Gemini JSON.
+    Can switch between pure extraction and mapped extraction modes.
+    """
+    cleaned = re.sub(r"^```json|^```|```$", "", gemini_output.strip(), flags=re.MULTILINE).strip()
+    
+    try:
+        raw_data = json.loads(cleaned)
+        raw_gemini_json = json.dumps(raw_data, indent=2)
+    except Exception as e:
+        print("Error parsing cleaned Gemini output:", e)
+        return {}, [], ""
+    
+    if PURE_GEMINI_EXTRACTION:
+        # Pure extraction mode - store everything as-is
+        return process_pure_extraction(raw_data, form_type, raw_gemini_json)
+    else:
+        # Mapped extraction mode - use existing logic
+        return process_mapped_extraction(raw_data, form_type, raw_gemini_json)
+
+def process_gemini_extraction_dual(gemini_output: str, form_type: str = None) -> Tuple[List[Tuple[Dict[str, Any], List[Dict[str, Any]], str]], str]:
+    """
+    Process forms in BOTH extraction modes simultaneously.
+    Returns both pure and mapped versions of each form.
+    """
+    cleaned = re.sub(r"^```json|^```|```$", "", gemini_output.strip(), flags=re.MULTILINE).strip()
+    
+    try:
+        raw_data = json.loads(cleaned)
+        raw_gemini_json = json.dumps(raw_data, indent=2)
+    except Exception as e:
+        print("Error parsing cleaned Gemini output:", e)
+        return [], ""
+    
+    all_forms = []
+    
+    # Process as pure extraction
+    pure_forms = process_pure_extraction(raw_data, form_type, raw_gemini_json)
+    if isinstance(pure_forms, tuple) and len(pure_forms) == 2:
+        # Single form response
+        all_forms.extend(pure_forms[0])
+    else:
+        # Multi-form response
+        all_forms.extend(pure_forms)
+    
+    # Process as mapped extraction
+    mapped_forms = process_mapped_extraction(raw_data, form_type, raw_gemini_json)
+    if isinstance(mapped_forms, tuple) and len(mapped_forms) == 2:
+        # Single form response
+        all_forms.extend(mapped_forms[0])
+    else:
+        # Multi-form response
+        all_forms.extend(mapped_forms)
+    
+    return all_forms, raw_gemini_json
+
+def process_pure_extraction(data: Dict[str, Any], form_type: str, raw_gemini_json: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]], str]:
+    """
+    Pure Gemini extraction - store everything without mapping.
+    """
+    # Check if this is a multi-form response
+    if isinstance(data, dict) and 'entries' in data and isinstance(data['entries'], list):
+        print("Detected multi-form response with entries array")
+        forms_data = []
+        for i, entry in enumerate(data['entries']):
+            print(f"Processing entry {i+1}: {entry}")
+            form_data, rows = extract_single_form_pure(entry, form_type)
+            individual_json = {
+                "form_type": data.get("form_type", "SUPERVISOR'S OVERTIME AUTHORIZATION"),
+                "entry": entry
+            }
+            forms_data.append((form_data, rows, json.dumps(individual_json)))
+        return forms_data, raw_gemini_json
+    else:
+        # Single form response
+        print("Processing as single form")
+        form_data, rows = extract_single_form_pure(data, form_type)
+        return [(form_data, rows, raw_gemini_json)], raw_gemini_json
+
+def extract_single_form_pure(data: Dict[str, Any], form_type: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    Extract a single form using pure Gemini output without field mapping.
+    """
+    # Store all top-level fields as-is
+    form_data = {
+        'form_type': form_type,
+        'raw_extracted_data': json.dumps(data),  # Store complete raw data
+        'extraction_mode': 'pure'
+    }
+    
+    # Extract any obvious fields that we know about for basic functionality
+    # but don't enforce strict mapping
+    if 'employee_name' in data:
+        form_data['employee_name'] = data['employee_name']
+    if 'pass_number' in data:
+        form_data['pass_number'] = data['pass_number']
+    if 'title' in data:
+        form_data['title'] = data['title']
+    if 'comments' in data:
+        form_data['comments'] = data['comments']
+    
+    # Handle rows/entries if they exist
+    rows = []
+    if 'rows' in data and isinstance(data['rows'], list):
+        rows = data['rows']
+    elif 'entries' in data and isinstance(data['entries'], list):
+        rows = data['entries']
+    
+    return form_data, rows
+
+def process_mapped_extraction(data: Dict[str, Any], form_type: str, raw_gemini_json: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]], str]:
+    """
+    Use existing mapped extraction logic but also store raw JSON.
+    """
+    # Use existing logic but ensure raw JSON is stored
+    if isinstance(data, dict) and 'entries' in data and isinstance(data['entries'], list):
+        print("Detected multi-form response with entries array")
+        forms_data = []
+        for i, entry in enumerate(data['entries']):
+            print(f"Processing entry {i+1}: {entry}")
+            form_data, rows = process_single_form(entry, form_type)
+            # Add raw JSON to form data
+            form_data['raw_extracted_data'] = json.dumps(entry)
+            form_data['extraction_mode'] = 'mapped'
+            individual_json = {
+                "form_type": data.get("form_type", "SUPERVISOR'S OVERTIME AUTHORIZATION"),
+                "entry": entry
+            }
+            forms_data.append((form_data, rows, json.dumps(individual_json)))
+        return forms_data, raw_gemini_json
+    else:
+        # Single form response
+        print("Processing as single form")
+        form_data, rows = process_single_form(data, form_type)
+        # Add raw JSON to form data
+        form_data['raw_extracted_data'] = json.dumps(data)
+        form_data['extraction_mode'] = 'mapped'
         return [(form_data, rows, raw_gemini_json)], raw_gemini_json
 
 def process_single_form(data, form_type=None):
@@ -481,12 +626,12 @@ def handle_upload(form_type):
                                 if is_blank_or_crossed_out(img_path):
                                     print(f"Skipped blank/crossed-out form: {img_path}")
                                     continue
-                                # Use Gemini to extract details
+                                # Use Gemini to extract details with dual approach (both pure and mapped)
                                 gemini_output = gemini_extract_file_details(img_path)
                                 print("--- Gemini Output ---")
                                 print(gemini_output)
                                 print("--- END Gemini Output ---")
-                                forms_data, raw_gemini_json = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ([], '')
+                                forms_data, raw_gemini_json = process_gemini_extraction_dual(gemini_output, form_type=form_type) if gemini_output else ([], '')
                                 
                                 # Process each form from the response
                                 for form_data, rows, individual_json in forms_data:
@@ -528,7 +673,7 @@ def handle_upload(form_type):
                 print("--- Gemini Output ---")
                 print(gemini_output)
                 print("--- END Gemini Output ---")
-                forms_data, raw_gemini_json = clean_and_map_gemini_output(gemini_output, form_type=form_type) if gemini_output else ([], '')
+                forms_data, raw_gemini_json = process_gemini_extraction_dual(gemini_output, form_type=form_type) if gemini_output else ([], '')
                 
                 # Process each form from the response
                 for form_data, rows, individual_json in forms_data:
@@ -625,242 +770,50 @@ def get_stats():
 
 @app.route('/api/dashboard', methods=['GET'])
 def get_dashboard_data():
-    def safe_int(val):
-        try:
-            return int(val)
-        except Exception:
-            return 0
     try:
         form_type = request.args.get('form_type')
         username = request.args.get('username')
+        extraction_mode_filter = request.args.get('extraction_mode')  # Get extraction mode filter
+        
         with sqlite3.connect('forms.db', timeout=10) as conn:
             c = conn.cursor()
-            # Filter by form_type if provided
+            
+            # Get forms for statistics calculation with extraction mode filter
             if form_type:
-                c.execute('SELECT * FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
-            else:
-                c.execute('SELECT * FROM exception_forms WHERE status = "processed"')
-            forms = c.fetchall()
-            total_forms = len(forms)
-
-            # Supervisor-specific: Most common reason for overtime
-            most_common_reason = None
-            if form_type == 'supervisor' and total_forms > 0:
-                reason_fields = [
-                    'reason_rdo', 'reason_absentee_coverage', 'reason_no_lunch', 'reason_early_report',
-                    'reason_late_clear', 'reason_save_as_oto', 'reason_capital_support_go', 'reason_other'
-                ]
-                reason_counts = {field: 0 for field in reason_fields}
-                for form in forms:
-                    # Get column names
-                    if not 'form_columns' in locals():
-                        form_columns = [desc[0] for desc in c.description]
-                    form_dict = dict(zip(form_columns, form))
-                    for field in reason_fields:
-                        if form_dict.get(field):
-                            reason_counts[field] += 1
-                if any(reason_counts.values()):
-                    most_common_reason_field = max(reason_counts, key=lambda k: reason_counts[k])
-                    reason_label_map = {
-                        'reason_rdo': 'RDO',
-                        'reason_absentee_coverage': 'Absentee Coverage',
-                        'reason_no_lunch': 'No Lunch',
-                        'reason_early_report': 'Early Report',
-                        'reason_late_clear': 'Late Clear',
-                        'reason_save_as_oto': 'Save as OTO',
-                        'reason_capital_support_go': 'Capital Support / GO',
-                        'reason_other': 'Other'
-                    }
-                    most_common_reason = {
-                        'reason': reason_label_map.get(most_common_reason_field, most_common_reason_field),
-                        'count': reason_counts[most_common_reason_field]
-                    }
+                if extraction_mode_filter == 'pure':
+                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed" AND form_type = ? AND extraction_mode = ?', (form_type, extraction_mode_filter))
+                elif extraction_mode_filter == 'mapped':
+                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed" AND form_type = ? AND (extraction_mode = ? OR extraction_mode IS NULL)', (form_type, extraction_mode_filter))
                 else:
-                    most_common_reason = {'reason': 'N/A', 'count': 0}
-
-            # Overtime calculation - handle differently for supervisor vs hourly forms
-            total_minutes = 0
-            
-            if form_type == 'supervisor':
-                # For supervisor forms, get overtime from the overtime_hours field
-                c.execute('SELECT overtime_hours FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
-                overtime_entries = c.fetchall()
-                for (overtime_hours,) in overtime_entries:
-                    if overtime_hours and overtime_hours != 'N/A':
-                        try:
-                            # Parse HH:MM format
-                            if ':' in str(overtime_hours):
-                                hours, minutes = str(overtime_hours).split(':')
-                                total_minutes += int(hours) * 60 + int(minutes)
-                            else:
-                                # If just a number, assume it's hours
-                                total_minutes += int(overtime_hours) * 60
-                        except:
-                            continue
-            elif form_type == 'hourly':
-                # For hourly forms, calculate from rows
-                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
-                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ? OR f.form_type IS NULL)''', (form_type,))
-                rows = c.fetchall()
-                total_minutes = sum(safe_int(hh) * 60 + safe_int(mm) for _, hh, mm, _, _ in rows)
+                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
             else:
-                # For general dashboard (no form_type), combine both hourly and supervisor overtime
-                # Get supervisor overtime
-                c.execute('SELECT overtime_hours FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
-                supervisor_overtime_entries = c.fetchall()
-                for (overtime_hours,) in supervisor_overtime_entries:
-                    if overtime_hours and overtime_hours != 'N/A':
-                        try:
-                            if ':' in str(overtime_hours):
-                                hours, minutes = str(overtime_hours).split(':')
-                                total_minutes += int(hours) * 60 + int(minutes)
-                            else:
-                                total_minutes += int(overtime_hours) * 60
-                        except:
-                            continue
-                
-                # Get hourly overtime
-                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
-                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL)''')
-                hourly_rows = c.fetchall()
-                total_minutes += sum(safe_int(hh) * 60 + safe_int(mm) for _, hh, mm, _, _ in hourly_rows)
+                if extraction_mode_filter == 'pure':
+                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed" AND extraction_mode = ?', (extraction_mode_filter,))
+                elif extraction_mode_filter == 'mapped':
+                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed" AND (extraction_mode = ? OR extraction_mode IS NULL)', (extraction_mode_filter,))
+                else:
+                    c.execute('SELECT id, pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json, overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode FROM exception_forms WHERE status = "processed"')
+            forms = c.fetchall()
             
-            total_overtime_hh = total_minutes // 60
-            total_overtime_mm = total_minutes % 60
-
-            # Job numbers - handle differently for different form types
-            job_numbers = []
-            if form_type == 'supervisor':
-                # For supervisor forms, get job numbers from the job_number field
-                c.execute('SELECT job_number FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
-                supervisor_jobs = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
-                job_numbers.extend(supervisor_jobs)
-            elif form_type == 'hourly':
-                # For hourly forms, get job numbers from rows
-                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
-                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ? OR f.form_type IS NULL)''', (form_type,))
-                rows = c.fetchall()
-                hourly_jobs = [ta_job_no for _, _, _, ta_job_no, _ in rows if ta_job_no and ta_job_no != 'N/A']
-                job_numbers.extend(hourly_jobs)
-            else:
-                # For general dashboard, combine both
-                # Get supervisor job numbers
-                c.execute('SELECT job_number FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
-                supervisor_jobs = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
-                job_numbers.extend(supervisor_jobs)
-                
-                # Get hourly job numbers
-                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
-                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL)''')
-                hourly_rows = c.fetchall()
-                hourly_jobs = [ta_job_no for _, _, _, ta_job_no, _ in hourly_rows if ta_job_no and ta_job_no != 'N/A']
-                job_numbers.extend(hourly_jobs)
+            # Calculate statistics using the new filtered function
+            stats = calculate_dashboard_stats_with_raw_data(forms, form_type, extraction_mode_filter)
             
-            unique_job_numbers = set(job_numbers)
-
-            # Most relevant position - handle all form types
-            positions = []
-            if form_type == 'supervisor':
-                # For supervisor forms, all positions are "Supervisor"
-                c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
-                supervisor_count = c.fetchone()[0]
-                if supervisor_count > 0:
-                    positions = ['Supervisor'] * supervisor_count
-            elif form_type == 'hourly':
-                # For hourly forms, use title
-                c.execute('SELECT title FROM exception_forms WHERE status = "processed" AND (form_type = ? OR form_type IS NULL)', (form_type,))
-                titles = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
-                positions.extend(titles)
-            else:
-                # For general dashboard, combine both
-                # Get supervisor positions (all are "Supervisor")
-                c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
-                supervisor_count = c.fetchone()[0]
-                if supervisor_count > 0:
-                    positions.extend(['Supervisor'] * supervisor_count)
-                
-                # Get hourly positions
-                c.execute('SELECT title FROM exception_forms WHERE status = "processed" AND (form_type = "hourly" OR form_type IS NULL)')
-                hourly_titles = [row[0] for row in c.fetchall() if row[0] and row[0] != 'N/A']
-                positions.extend(hourly_titles)
-            
-            most_position, most_position_count = ('N/A', 0)
-            if positions:
-                from collections import Counter
-                most_position, most_position_count = Counter(positions).most_common(1)[0]
-
-            # Most relevant location - handle all form types
-            locations = []
-            if form_type == 'supervisor':
-                # For supervisor forms, use report_loc or overtime_location
-                c.execute('SELECT report_loc, overtime_location FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
-                location_entries = c.fetchall()
-                for report_loc, overtime_location in location_entries:
-                    if report_loc and report_loc != 'N/A':
-                        locations.append(report_loc)
-                    if overtime_location and overtime_location != 'N/A':
-                        locations.append(overtime_location)
-            elif form_type == 'hourly':
-                # For hourly forms, use line_location from rows
-                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
-                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = ? OR f.form_type IS NULL)''', (form_type,))
-                rows = c.fetchall()
-                locations = [loc for _, _, _, _, loc in rows if loc and loc != 'N/A']
-            else:
-                # For general dashboard, combine both
-                # Get supervisor locations
-                c.execute('SELECT report_loc, overtime_location FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
-                supervisor_location_entries = c.fetchall()
-                for report_loc, overtime_location in supervisor_location_entries:
-                    if report_loc and report_loc != 'N/A':
-                        locations.append(report_loc)
-                    if overtime_location and overtime_location != 'N/A':
-                        locations.append(overtime_location)
-                
-                # Get hourly locations
-                c.execute('''SELECT code_description, overtime_hh, overtime_mm, ta_job_no, line_location FROM exception_form_rows r
-                             JOIN exception_forms f ON r.form_id = f.id WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL)''')
-                hourly_rows = c.fetchall()
-                hourly_locations = [loc for _, _, _, _, loc in hourly_rows if loc and loc != 'N/A']
-                locations.extend(hourly_locations)
-            
-            most_location, most_location_count = ('N/A', 0)
-            location_form_type = None
-            if locations:
-                from collections import Counter
-                most_location, most_location_count = Counter(locations).most_common(1)[0]
-                
-                # Determine which form type contributes to the most relevant location
-                if not form_type:  # Only for general dashboard
-                    # Count total supervisor forms vs total hourly forms
-                    c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = "supervisor"')
-                    total_supervisor_forms = c.fetchone()[0]
-                    
-                    c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND (form_type = "hourly" OR form_type IS NULL)')
-                    total_hourly_forms = c.fetchone()[0]
-                    
-                    # If there are more supervisor forms overall, show supervisor as the contributor
-                    # Otherwise, show which form type actually has the most relevant location
-                    if total_supervisor_forms > total_hourly_forms:
-                        location_form_type = 'supervisor'
-                    else:
-                        # Count forms that actually have this specific location
-                        c.execute('SELECT COUNT(*) FROM exception_forms WHERE status = "processed" AND form_type = "supervisor" AND (report_loc = ? OR overtime_location = ?)', (most_location, most_location))
-                        supervisor_with_location = c.fetchone()[0]
-                        
-                        c.execute('''SELECT COUNT(*) FROM exception_form_rows r
-                                     JOIN exception_forms f ON r.form_id = f.id 
-                                     WHERE f.status = "processed" AND (f.form_type = "hourly" OR f.form_type IS NULL) 
-                                     AND r.line_location = ?''', (most_location,))
-                        hourly_with_location = c.fetchone()[0]
-                        
-                        location_form_type = 'supervisor' if supervisor_with_location > hourly_with_location else 'hourly'
-
-            # Forms table
+            # Get forms for the table display with extraction mode filter
             if form_type:
-                c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND (form_type = ?)', (form_type,))
+                if extraction_mode_filter == 'pure':
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND form_type = ? AND extraction_mode = ?', (form_type, extraction_mode_filter))
+                elif extraction_mode_filter == 'mapped':
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND form_type = ? AND (extraction_mode = ? OR extraction_mode IS NULL)', (form_type, extraction_mode_filter))
+                else:
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND form_type = ?', (form_type,))
             else:
-                c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms')
+                if extraction_mode_filter == 'pure':
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND extraction_mode = ?', (extraction_mode_filter,))
+                elif extraction_mode_filter == 'mapped':
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed" AND (extraction_mode = ? OR extraction_mode IS NULL)', (extraction_mode_filter,))
+                else:
+                    c.execute('SELECT id, pass_number, title, employee_name, actual_ot_date, div, comments, status, form_type, upload_date FROM exception_forms WHERE status = "processed"')
+            
             forms_table = [
                 {
                     "id": row[0],
@@ -872,40 +825,327 @@ def get_dashboard_data():
                     "comments": row[6],
                     "status": row[7],
                     "form_type": row[8] if len(row) > 8 else '',
-                    "upload_date": row[9] if len(row) > 9 else '' # Add upload_date to the form data
+                    "upload_date": row[9] if len(row) > 9 else ''
                 }
                 for row in c.fetchall()
             ]
+            
             conn.commit()
+        
         result = {
-            "total_forms": total_forms,
-            "total_overtime": f"{total_overtime_hh}h {total_overtime_mm}m",
-            "total_job_numbers": len(job_numbers),
-            "unique_job_numbers": len(unique_job_numbers),
-            "most_relevant_position": {"position": most_position, "count": most_position_count},
-            "most_relevant_location": {"location": most_location, "count": most_location_count, "form_type": location_form_type},
+            "total_forms": stats["total_forms"],
+            "total_overtime": stats["total_overtime"],
+            "total_job_numbers": stats["total_job_numbers"],
+            "unique_job_numbers": stats["unique_job_numbers"],
+            "most_relevant_position": stats["most_relevant_position"],
+            "most_relevant_location": stats["most_relevant_location"],
+            "most_common_reason": stats.get("most_common_reason"),
             "forms": forms_table
         }
-        if form_type == 'supervisor':
-            result['most_common_reason'] = most_common_reason
+        
         return jsonify(result)
+        
     except Exception as e:
         print(f"Error in dashboard: {e}")
         return jsonify({"error": str(e)}), 500
 
+def calculate_dashboard_stats_with_raw_data(forms, form_type=None, extraction_mode_filter=None):
+    """
+    Calculate dashboard statistics that works with both pure and mapped extraction modes.
+    For pure extraction, it parses the raw_extracted_data JSON to extract statistics.
+    
+    Args:
+        forms: List of form data
+        form_type: 'hourly', 'supervisor', or None for all
+        extraction_mode_filter: 'pure', 'mapped', or None for all modes
+    """
+    import json
+    from collections import Counter
+    
+    def safe_int(val):
+        try:
+            return int(val)
+        except Exception:
+            return 0
+    
+    total_forms = len(forms)
+    total_minutes = 0
+    job_numbers = []
+    positions = []
+    locations = []
+    reason_counts = {field: 0 for field in [
+        'reason_rdo', 'reason_absentee_coverage', 'reason_no_lunch', 
+        'reason_early_report', 'reason_late_clear', 'reason_save_as_oto', 
+        'reason_capital_support_go', 'reason_other'
+    ]}
+    
+    # Define the exact column order that matches our SELECT statement
+    columns = ['id', 'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div', 'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved', 'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'username', 'ocr_lines', 'form_type', 'upload_date', 'file_name', 'reg', 'superintendent_authorization_signature', 'superintendent_authorization_pass', 'superintendent_authorization_date', 'entered_into_uts', 'raw_gemini_json', 'overtime_hours', 'report_loc', 'overtime_location', 'report_time', 'relief_time', 'date_of_overtime', 'job_number', 'rc_number', 'acct_number', 'reason_rdo', 'reason_absentee_coverage', 'reason_no_lunch', 'reason_early_report', 'reason_late_clear', 'reason_save_as_oto', 'reason_capital_support_go', 'reason_other', 'amount', 'raw_extracted_data', 'extraction_mode']
+    
+    for form in forms:
+        # Convert tuple to dictionary using column names
+        if isinstance(form, tuple):
+            form_dict = dict(zip(columns, form))
+        else:
+            form_dict = dict(form)
+        
+
+        
+        extraction_mode = form_dict.get('extraction_mode')
+        raw_data = form_dict.get('raw_extracted_data')
+        current_form_type = form_dict.get('form_type')
+        
+        # Filter by extraction mode if specified
+        if extraction_mode_filter:
+            if extraction_mode_filter == 'pure' and extraction_mode != 'pure':
+                continue
+            elif extraction_mode_filter == 'mapped' and extraction_mode not in [None, '', 'mapped']:
+                continue
+        
+        # Use the current form's type for processing this specific form
+        current_form_type_for_processing = current_form_type
+        
+        if extraction_mode == 'pure' and raw_data:
+            try:
+                # Parse raw Gemini data for pure extraction mode
+                raw_json = json.loads(raw_data)
+                
+                # Extract overtime information
+                if current_form_type_for_processing == 'supervisor':
+                    # Look for overtime hours in raw data
+                    overtime_hours = raw_json.get('overtime_hours') or raw_json.get('overtime') or raw_json.get('hours')
+                    if overtime_hours and overtime_hours != 'N/A':
+                        try:
+                            if ':' in str(overtime_hours):
+                                hours, minutes = str(overtime_hours).split(':')
+                                total_minutes += int(hours) * 60 + int(minutes)
+                            else:
+                                total_minutes += int(overtime_hours) * 60
+                        except:
+                            pass
+                elif current_form_type_for_processing == 'hourly':
+                    # Look for overtime in rows or direct fields
+                    rows = raw_json.get('rows', [])
+                    for row in rows:
+                        if isinstance(row, dict):
+                            hh = safe_int(row.get('overtime_hh', 0))
+                            mm = safe_int(row.get('overtime_mm', 0))
+                            total_minutes += hh * 60 + mm
+                
+                # Extract job numbers
+                if current_form_type_for_processing == 'supervisor':
+                    job_num = raw_json.get('job_number') or raw_json.get('job') or raw_json.get('job_no')
+                    if job_num and job_num != 'N/A':
+                        job_numbers.append(str(job_num))
+                elif current_form_type_for_processing == 'hourly':
+                    rows = raw_json.get('rows', [])
+                    for row in rows:
+                        if isinstance(row, dict):
+                            ta_job = row.get('ta_job_no') or row.get('job_no')
+                            if ta_job and ta_job != 'N/A':
+                                job_numbers.append(str(ta_job))
+                
+                # Extract positions/titles
+                if current_form_type_for_processing == 'supervisor':
+                    positions.append('Supervisor')
+                else:
+                    title = raw_json.get('title') or raw_json.get('position')
+                    if title and title != 'N/A':
+                        positions.append(title)
+                
+                # Extract locations
+                if current_form_type_for_processing == 'supervisor':
+                    report_loc = raw_json.get('report_loc') or raw_json.get('report_location')
+                    overtime_loc = raw_json.get('overtime_location') or raw_json.get('location')
+                    if report_loc and report_loc != 'N/A':
+                        locations.append(report_loc)
+                    if overtime_loc and overtime_loc != 'N/A':
+                        locations.append(overtime_loc)
+                elif current_form_type_for_processing == 'hourly':
+                    rows = raw_json.get('rows', [])
+                    for row in rows:
+                        if isinstance(row, dict):
+                            line_loc = row.get('line_location') or row.get('location')
+                            if line_loc and line_loc != 'N/A':
+                                locations.append(line_loc)
+                
+                # Extract reason counts for supervisor forms
+                if current_form_type_for_processing == 'supervisor':
+                    reasons = raw_json.get('reason_for_overtime', [])
+                    if isinstance(reasons, list):
+                        for reason in reasons:
+                            reason_lower = str(reason).lower()
+                            if 'rdo' in reason_lower:
+                                reason_counts['reason_rdo'] += 1
+                            elif 'absentee' in reason_lower or 'coverage' in reason_lower:
+                                reason_counts['reason_absentee_coverage'] += 1
+                            elif 'lunch' in reason_lower:
+                                reason_counts['reason_no_lunch'] += 1
+                            elif 'early' in reason_lower and 'report' in reason_lower:
+                                reason_counts['reason_early_report'] += 1
+                            elif 'late' in reason_lower and 'clear' in reason_lower:
+                                reason_counts['reason_late_clear'] += 1
+                            elif 'oto' in reason_lower:
+                                reason_counts['reason_save_as_oto'] += 1
+                            elif 'capital' in reason_lower or 'support' in reason_lower:
+                                reason_counts['reason_capital_support_go'] += 1
+                            else:
+                                reason_counts['reason_other'] += 1
+                
+            except json.JSONDecodeError:
+                # Fall back to mapped fields if JSON parsing fails
+                pass
+        
+        # Use mapped fields as fallback or for mapped extraction mode
+        if extraction_mode == 'mapped' or not raw_data:
+            # Overtime calculation
+            if current_form_type_for_processing == 'supervisor':
+                overtime_hours = form_dict.get('overtime_hours')
+                if overtime_hours and overtime_hours != 'N/A':
+                    try:
+                        # Handle cases like "00:40 + 00:20"
+                        if '+' in str(overtime_hours):
+                            parts = str(overtime_hours).split('+')
+                            for part in parts:
+                                part = part.strip()
+                                if ':' in part:
+                                    hours, minutes = part.split(':')
+                                    total_minutes += int(hours) * 60 + int(minutes)
+                                else:
+                                    total_minutes += int(part) * 60
+                        elif ':' in str(overtime_hours):
+                            hours, minutes = str(overtime_hours).split(':')
+                            total_minutes += int(hours) * 60 + int(minutes)
+                        else:
+                            total_minutes += int(overtime_hours) * 60
+                    except Exception as e:
+                        pass
+            elif current_form_type_for_processing == 'hourly':
+                # For hourly forms, we need to fetch the rows to get overtime data
+                try:
+                    import sqlite3
+                    with sqlite3.connect('forms.db', timeout=10) as conn:
+                        c = conn.cursor()
+                        c.execute('SELECT overtime_hh, overtime_mm, line_location, ta_job_no, code, code_description FROM exception_form_rows WHERE form_id = ?', (form_dict.get('id'),))
+                        rows = c.fetchall()
+                        for row in rows:
+                            hh = safe_int(row[0])
+                            mm = safe_int(row[1])
+                            total_minutes += hh * 60 + mm
+                            
+                            # Add location from rows
+                            line_loc = row[2]
+                            if line_loc and line_loc != 'N/A':
+                                locations.append(line_loc)
+                            
+                            # Add job number from rows
+                            ta_job = row[3]
+                            if ta_job and ta_job != 'N/A':
+                                job_numbers.append(str(ta_job))
+                            
+                            # Add reason from rows
+                            code = row[4]
+                            code_desc = row[5]
+                            if code and code != 'N/A':
+                                reason_counts['reason_other'] += 1  # For hourly forms, use 'other' category
+                except Exception as e:
+                    pass
+            
+            # Job numbers (for supervisor forms)
+            if current_form_type_for_processing == 'supervisor':
+                job_num = form_dict.get('job_number')
+                if job_num and job_num != 'N/A':
+                    job_numbers.append(str(job_num))
+            
+            # Positions
+            if current_form_type_for_processing == 'supervisor':
+                positions.append('Supervisor')
+            else:
+                title = form_dict.get('title')
+                if title and title != 'N/A':
+                    positions.append(title)
+            
+            # Locations (for supervisor forms)
+            if current_form_type_for_processing == 'supervisor':
+                report_loc = form_dict.get('report_loc')
+                overtime_loc = form_dict.get('overtime_location')
+                if report_loc and report_loc != 'N/A':
+                    locations.append(report_loc)
+                if overtime_loc and overtime_loc != 'N/A':
+                    locations.append(overtime_loc)
+            
+            # Reason counts for supervisor
+            if current_form_type_for_processing == 'supervisor':
+                for field in reason_counts.keys():
+                    if form_dict.get(field):
+                        reason_counts[field] += 1
+    
+    # Calculate final statistics
+    total_overtime_hh = total_minutes // 60
+    total_overtime_mm = total_minutes % 60
+    
+    unique_job_numbers = set(job_numbers)
+    
+    most_position, most_position_count = ('N/A', 0)
+    if positions:
+        most_position, most_position_count = Counter(positions).most_common(1)[0]
+    
+    most_location, most_location_count = ('N/A', 0)
+    if locations:
+        most_location, most_location_count = Counter(locations).most_common(1)[0]
+    
+    most_common_reason = None
+    if any(reason_counts.values()):
+        most_common_reason_field = max(reason_counts, key=lambda k: reason_counts[k])
+        reason_label_map = {
+            'reason_rdo': 'RDO',
+            'reason_absentee_coverage': 'Absentee Coverage',
+            'reason_no_lunch': 'No Lunch',
+            'reason_early_report': 'Early Report',
+            'reason_late_clear': 'Late Clear',
+            'reason_save_as_oto': 'Save as OTO',
+            'reason_capital_support_go': 'Capital Support / GO',
+            'reason_other': 'Other'
+        }
+        most_common_reason = {
+            'reason': reason_label_map.get(most_common_reason_field, most_common_reason_field),
+            'count': reason_counts[most_common_reason_field]
+        }
+    else:
+        most_common_reason = {'reason': 'N/A', 'count': 0}
+    
+    return {
+        "total_forms": total_forms,
+        "total_overtime": f"{total_overtime_hh}h {total_overtime_mm}m",
+        "total_job_numbers": len(job_numbers),
+        "unique_job_numbers": len(unique_job_numbers),
+        "most_relevant_position": {"position": most_position, "count": most_position_count},
+        "most_relevant_location": {"location": most_location, "count": most_location_count},
+        "most_common_reason": most_common_reason
+    }
+
 @app.route('/api/form/<int:form_id>', methods=['GET'])
 def get_form_details(form_id):
     import sqlite3
+    extraction_mode = request.args.get('extraction_mode', 'mapped')
+    
     with sqlite3.connect('forms.db', timeout=10) as conn:
         c = conn.cursor()
-        # Get form header
-        c.execute('SELECT * FROM exception_forms WHERE id = ?', (form_id,))
+        # Get form header with extraction mode filter
+        if extraction_mode == 'pure':
+            # For pure extraction, only return forms that have extraction_mode = 'pure'
+            c.execute('SELECT * FROM exception_forms WHERE id = ? AND extraction_mode = ?', (form_id, extraction_mode))
+        else:
+            # For mapped extraction, return forms with extraction_mode = 'mapped' OR NULL (backward compatibility)
+            c.execute('SELECT * FROM exception_forms WHERE id = ? AND (extraction_mode = ? OR extraction_mode IS NULL)', (form_id, extraction_mode))
+        
         form_row = c.fetchone()
         if not form_row:
-            conn.close()
             return jsonify({'error': 'Form not found'}), 404
+        
         columns = [desc[0] for desc in c.description]
         form_data = dict(zip(columns, form_row))
+        
         # Get all rows for this form
         c.execute('SELECT * FROM exception_form_rows WHERE form_id = ?', (form_id,))
         rows = c.fetchall()
@@ -1112,14 +1352,60 @@ def get_audit_trail():
         conn.commit()
     return jsonify({"logs": logs})
 
+@app.route('/api/extraction-mode', methods=['GET', 'POST'])
+def extraction_mode():
+    """Get or set the extraction mode (pure vs mapped)"""
+    global PURE_GEMINI_EXTRACTION
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        if data and 'mode' in data:
+            PURE_GEMINI_EXTRACTION = data['mode'] == 'pure'
+            return jsonify({
+                'mode': 'pure' if PURE_GEMINI_EXTRACTION else 'mapped',
+                'message': f'Extraction mode set to {"pure" if PURE_GEMINI_EXTRACTION else "mapped"}'
+            })
+        else:
+            return jsonify({'error': 'Mode not specified'}), 400
+    
+    return jsonify({
+        'mode': 'pure' if PURE_GEMINI_EXTRACTION else 'mapped',
+        'description': {
+            'pure': 'Extract all fields from Gemini without mapping to predefined fields',
+            'mapped': 'Map Gemini output to predefined database fields'
+        }
+    })
+
 @app.route('/api/forms/export', methods=['GET'])
 def export_forms():
     import sqlite3
+    import json
+    
+    # Get query parameters
+    form_type = request.args.get('form_type')
+    extraction_mode = request.args.get('extraction_mode')
+    
     with sqlite3.connect('forms.db', timeout=10) as conn:
         c = conn.cursor()
-        # Get all columns except 'status'
-        c.execute('PRAGMA table_info(exception_forms)')
-        all_columns = [row[1] for row in c.fetchall() if row[1] != 'status']
+        
+        # Build query with filters
+        query = "SELECT * FROM exception_forms WHERE 1=1"
+        params = []
+        
+        if form_type:
+            query += " AND form_type = ?"
+            params.append(form_type)
+        
+        if extraction_mode:
+            query += " AND extraction_mode = ?"
+            params.append(extraction_mode)
+        
+        c.execute(query, params)
+        rows = c.fetchall()
+        
+        # Get column names
+        columns = [desc[0] for desc in c.description]
+        
         # Human-friendly headers
         header_map = {
             'id': 'Form ID',
@@ -1138,19 +1424,54 @@ def export_forms():
             'regular_assignment': 'Regular Assignment',
             'report': 'Report',
             'relief': 'Relief',
-            'todays_date': "Today's Date"
+            'todays_date': "Today's Date",
+            'form_type': 'Form Type',
+            'extraction_mode': 'Extraction Mode',
+            'raw_extracted_data': 'Raw Gemini Data (JSON)',
+            'raw_gemini_json': 'Raw Gemini JSON',
+            'upload_date': 'Upload Date'
         }
-        headers = [header_map.get(col, col) for col in all_columns]
-        sql = f"SELECT {', '.join(all_columns)} FROM exception_forms"
-        c.execute(sql)
-        rows = c.fetchall()
+        
+        headers = [header_map.get(col, col) for col in columns]
+        
         conn.commit()
+    
     def stream():
         yield ','.join(headers) + '\n'
         for row in rows:
-            yield ','.join([str(item) if item is not None else '' for item in row]) + '\n'
+            # Process each cell, handling JSON data specially
+            processed_row = []
+            for i, item in enumerate(row):
+                if item is None:
+                    processed_row.append('')
+                elif columns[i] in ['raw_extracted_data', 'raw_gemini_json'] and item:
+                    # Format JSON data for Excel readability
+                    try:
+                        parsed_json = json.loads(item)
+                        formatted_json = json.dumps(parsed_json, indent=2)
+                        # Escape quotes and newlines for CSV
+                        formatted_json = formatted_json.replace('"', '""').replace('\n', ' ')
+                        processed_row.append(f'"{formatted_json}"')
+                    except:
+                        escaped_item = str(item).replace('"', '""')
+                        processed_row.append(f'"{escaped_item}"')
+                else:
+                    # Escape quotes for CSV
+                    cell_value = str(item).replace('"', '""')
+                    processed_row.append(f'"{cell_value}"')
+            
+            yield ','.join(processed_row) + '\n'
+    
+    # Generate filename based on filters
+    filename_parts = ['exception_forms']
+    if form_type:
+        filename_parts.append(form_type)
+    if extraction_mode:
+        filename_parts.append(extraction_mode)
+    filename = '_'.join(filename_parts) + '.csv'
+    
     return Response(stream(), mimetype='text/csv', headers={
-        'Content-Disposition': 'attachment; filename=exception_forms.csv'
+        'Content-Disposition': f'attachment; filename={filename}'
     })
 
 if __name__ == "__main__":

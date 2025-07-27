@@ -88,18 +88,39 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const [isEditingRawJson, setIsEditingRawJson] = useState(false);
   const [rawJsonEdit, setRawJsonEdit] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
+  const [extractionMode, setExtractionMode] = useState<'pure' | 'mapped'>('mapped');
+  const [showExtractionModeModal, setShowExtractionModeModal] = useState(false);
   // const { user } = useAuth ? useAuth() : { user: null };
 
   useEffect(() => {
     setLoading(true);
     setError('');
-    let url = 'http://localhost:8000/api/dashboard';
-    if (filterType === 'hourly') {
-      url += '?form_type=hourly';
-    } else if (filterType === 'supervisor') {
-      url += '?form_type=supervisor';
-    }
-    fetch(url)
+    
+    // Load extraction mode first
+    fetch('http://localhost:8000/api/extraction-mode')
+      .then(res => res.json())
+      .then(data => {
+        setExtractionMode(data.mode);
+        
+        // Then load dashboard data with extraction mode filter
+        let url = 'http://localhost:8000/api/dashboard';
+        const params = new URLSearchParams();
+        
+        if (filterType === 'hourly') {
+          params.append('form_type', 'hourly');
+        } else if (filterType === 'supervisor') {
+          params.append('form_type', 'supervisor');
+        }
+        
+        // Add extraction mode filter to show only data from current mode
+        params.append('extraction_mode', data.mode);
+        
+        if (params.toString()) {
+          url += '?' + params.toString();
+        }
+        
+        return fetch(url);
+      })
       .then(res => res.json())
       .then(data => {
         setDashboard(data);
@@ -109,7 +130,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         setError('Failed to load dashboard data.');
         setLoading(false);
       });
-  }, [filterType]);
+  }, [filterType, extractionMode]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -193,18 +214,50 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   };
 
   const handleViewDetails = async (formId: number) => {
+    console.log('handleViewDetails called with formId:', formId, 'extractionMode:', extractionMode);
     setDetailsLoading(true);
     setDetailsError('');
     setSelectedFormDetails(null);
     try {
-      const response = await fetch(`http://localhost:8000/api/form/${formId}`);
+      const response = await fetch(`http://localhost:8000/api/form/${formId}?extraction_mode=${extractionMode}`);
       const data = await response.json();
+      console.log('Response status:', response.status, 'Data:', data);
       if (response.ok) {
+        console.log('Setting selectedFormDetails with data:', data);
         setSelectedFormDetails(data);
+      } else if (response.status === 404 && extractionMode === 'pure') {
+        console.log('404 for pure mode, trying fallback to mapped');
+        // For pure extraction mode, if form not found, try to get the mapped version to show raw data
+        const fallbackResponse = await fetch(`http://localhost:8000/api/form/${formId}?extraction_mode=mapped`);
+        const fallbackData = await fallbackResponse.json();
+        console.log('Fallback response status:', fallbackResponse.status, 'Fallback data:', fallbackData);
+                  if (fallbackResponse.ok) {
+            if (fallbackData.form.raw_extracted_data) {
+              console.log('Setting fallback data with raw_extracted_data');
+              // Show the mapped form but indicate it's showing raw data from mapped version
+              setSelectedFormDetails({
+                ...fallbackData,
+                isFallbackToMapped: true
+              });
+            } else {
+              console.log('No raw_extracted_data available');
+              // Set the form details so the modal opens, but with an error message
+              setSelectedFormDetails({
+                ...fallbackData,
+                isFallbackToMapped: true,
+                noRawDataAvailable: true
+              });
+            }
+          } else {
+            console.log('Fallback also failed');
+            setDetailsError('No pure extraction data available for this form. This form was processed before dual extraction was implemented.');
+          }
       } else {
+        console.log('Other error:', data.error);
         setDetailsError(data.error || 'Failed to load form details.');
       }
     } catch (err) {
+      console.log('Network error:', err);
       setDetailsError('Network or server error.');
     }
     setDetailsLoading(false);
@@ -242,7 +295,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       const data = await response.json();
       if (response.ok) {
         // Re-fetch the latest form details from the backend
-        const detailsRes = await fetch(`http://localhost:8000/api/form/${editForm.id}`);
+        const detailsRes = await fetch(`http://localhost:8000/api/form/${editForm.id}?extraction_mode=${extractionMode}`);
         const detailsData = await detailsRes.json();
         setSelectedFormDetails(detailsData);
         setShowEditModal(false);
@@ -293,7 +346,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       setSaveLoading(true);
       setSaveError('');
       
-      const response = await fetch(`http://localhost:8000/api/form/${selectedFormDetails.form.id}`, {
+      const response = await fetch(`http://localhost:8000/api/form/${selectedFormDetails.form.id}?extraction_mode=${extractionMode}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -334,6 +387,28 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const handleCancelRawJson = () => {
     setIsEditingRawJson(false);
     setSaveError('');
+  };
+
+  const handleToggleExtractionMode = async () => {
+    const newMode = extractionMode === 'pure' ? 'mapped' : 'pure';
+    try {
+      const response = await fetch('http://localhost:8000/api/extraction-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setExtractionMode(newMode);
+        setShowExtractionModeModal(false);
+        // Trigger useEffect to reload dashboard data with new extraction mode filter
+        setLoading(true);
+      } else {
+        alert(data.error || 'Failed to change extraction mode.');
+      }
+    } catch (err) {
+      alert('Network or server error.');
+    }
   };
 
   // Filter forms based on search and filters
@@ -453,7 +528,22 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   // }
 
   const handleExport = () => {
-    window.open('http://localhost:8000/api/forms/export', '_blank');
+    // Build export URL with current filters
+    let exportUrl = 'http://localhost:8000/api/forms/export';
+    const params = new URLSearchParams();
+    
+    if (filterType) {
+      params.append('form_type', filterType);
+    }
+    
+    // Add extraction mode filter
+    params.append('extraction_mode', extractionMode);
+    
+    if (params.toString()) {
+      exportUrl += '?' + params.toString();
+    }
+    
+    window.open(exportUrl, '_blank');
   };
 
   const handleDeleteForm = async (formId: number) => {
@@ -538,16 +628,34 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8">
-        <h1
-          className="text-3xl font-bold text-gray-900"
-          style={filterType === 'supervisor' ? { wordSpacing: '0.12em' } : {}}
-        >
-          {filterType === 'hourly'
-            ? 'Exception Claim Dashboard'
-            : filterType === 'supervisor'
-              ? 'Overtime Authorization Forms Dashboard (Supervisors)'
-              : heading || 'MTA Forms Dashboard'}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1
+            className="text-3xl font-bold text-gray-900"
+            style={filterType === 'supervisor' ? { wordSpacing: '0.12em' } : {}}
+          >
+            {filterType === 'hourly'
+              ? 'Exception Claim Dashboard'
+              : filterType === 'supervisor'
+                ? 'Overtime Authorization Forms Dashboard (Supervisors)'
+                : heading || 'MTA Forms Dashboard'}
+          </h1>
+          <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
+            extractionMode === 'pure' 
+              ? 'bg-purple-100 text-purple-800' 
+              : 'bg-green-100 text-green-800'
+          }`}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            <span className="text-sm font-medium">
+              {extractionMode === 'pure' ? 'Pure' : 'Mapped'} Extraction Mode
+              {extractionMode === 'mapped' && (
+                <span className="ml-1 px-1 py-0.5 bg-yellow-500 text-white text-xs rounded-full font-bold">BETA</span>
+              )}
+            </span>
+            <span className="text-xs opacity-75">(Forms stored in both modes)</span>
+          </div>
+        </div>
       </div>
 
       {/* Tracker Section */}
@@ -868,6 +976,24 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
               Filters {hasActiveFilters() && <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">●</span>}
             </button>
             
+                    <button
+          onClick={() => setShowExtractionModeModal(true)}
+          className={`px-3 py-1.5 rounded-lg font-semibold text-sm transition-colors ${
+            extractionMode === 'pure'
+              ? 'bg-purple-600 text-white hover:bg-purple-700'
+              : 'bg-green-600 text-white hover:bg-green-700'
+          }`}
+          title={`Current mode: ${extractionMode === 'pure' ? 'Pure Gemini extraction' : 'Mapped field extraction (Beta)'}`}
+        >
+          <svg className="w-4 h-4 inline-block mr-2 -mt-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          {extractionMode === 'pure' ? 'Pure Extraction' : 'Mapped Extraction'}
+          {extractionMode === 'mapped' && (
+            <span className="ml-1 px-1.5 py-0.5 bg-yellow-500 text-white text-xs rounded-full font-bold">BETA</span>
+          )}
+        </button>
+            
             <button
               onClick={handleExport}
               className="bg-gradient-to-r from-blue-500 to-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition-colors relative group text-sm"
@@ -1058,6 +1184,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       </div>
 
       {/* Details Modal */}
+      {console.log('Rendering modal, selectedFormDetails:', selectedFormDetails)}
       {selectedFormDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -1137,8 +1264,65 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
 
                     </div>
                   )}
+                  {/* Pure Extraction Mode - Show Raw Data */}
+                  {console.log('Pure extraction section, extractionMode:', extractionMode, 'raw_extracted_data:', selectedFormDetails?.form?.raw_extracted_data)}
+                  {extractionMode === 'pure' && (
+                    <div className="mb-6">
+                      {selectedFormDetails.form.raw_extracted_data ? (
+                        <>
+                          {selectedFormDetails.isFallbackToMapped && (
+                            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                              <p className="text-yellow-800 text-sm">
+                                <strong>Note:</strong> This form was processed before dual extraction was implemented. 
+                                Showing raw data from the mapped extraction version.
+                              </p>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Raw Gemini Extraction Data</h4>
+                            <button
+                              onClick={handleEditRawJson}
+                              className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors shadow-sm"
+                            >
+                              Edit Raw JSON
+                            </button>
+                          </div>
+                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                            <pre className="text-sm text-gray-800 whitespace-pre-wrap overflow-x-auto">
+                              {(() => {
+                                try {
+                                  const parsed = JSON.parse(selectedFormDetails.form.raw_extracted_data);
+                                  return JSON.stringify(parsed, null, 2);
+                                } catch {
+                                  return selectedFormDetails.form.raw_extracted_data;
+                                }
+                              })()}
+                            </pre>
+                          </div>
+                        </>
+                      ) : selectedFormDetails.noRawDataAvailable ? (
+                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-yellow-800 text-sm">
+                            <strong>No raw extraction data available.</strong> This form was processed before dual extraction was implemented. 
+                            Upload a new form to see both pure and mapped extraction data.
+                          </p>
+                          <p className="text-yellow-700 text-sm mt-2">
+                            <strong>Showing mapped extraction data below:</strong>
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                          <p className="text-gray-600 text-sm">
+                            <strong>No raw extraction data available.</strong> This form was processed before dual extraction was implemented. 
+                            Upload a new form to see both pure and mapped extraction data.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* If no fields extracted */}
-                  {!(selectedFormDetails.form.regular_assignment || selectedFormDetails.form.report || selectedFormDetails.form.relief || selectedFormDetails.form.todays_date || selectedFormDetails.form.pass_number || selectedFormDetails.form.employee_name || selectedFormDetails.form.title || selectedFormDetails.form.rdos || selectedFormDetails.form.actual_ot_date || selectedFormDetails.form.div || selectedFormDetails.form.supervisor_name || selectedFormDetails.form.supervisor_pass_no || selectedFormDetails.form.oto || selectedFormDetails.form.oto_amount_saved || selectedFormDetails.form.entered_in_uts || selectedFormDetails.form.comments) && (
+                  {!(selectedFormDetails.form.regular_assignment || selectedFormDetails.form.report || selectedFormDetails.form.relief || selectedFormDetails.form.todays_date || selectedFormDetails.form.pass_number || selectedFormDetails.form.employee_name || selectedFormDetails.form.title || selectedFormDetails.form.rdos || selectedFormDetails.form.actual_ot_date || selectedFormDetails.form.div || selectedFormDetails.form.supervisor_name || selectedFormDetails.form.supervisor_pass_no || selectedFormDetails.form.oto || selectedFormDetails.form.oto_amount_saved || selectedFormDetails.form.entered_in_uts || selectedFormDetails.form.comments) && extractionMode === 'mapped' && (
                     <div className="text-gray-500 mb-4">No details were extracted from this form.</div>
                   )}
 
@@ -1489,6 +1673,66 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 <button
                   onClick={handleCancelEdit}
                   className="bg-gray-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors shadow-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Extraction Mode Modal */}
+      {showExtractionModeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-800">Extraction Mode</h3>
+            </div>
+            <div className="p-6">
+              <div className="mb-6">
+                <h4 className="font-semibold text-gray-800 mb-3">Current Mode: {extractionMode === 'pure' ? 'Pure Extraction' : 'Mapped Extraction'}</h4>
+                
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-lg border-2 ${extractionMode === 'pure' ? 'border-purple-300 bg-purple-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <h5 className="font-medium text-gray-800 mb-2">Pure Extraction</h5>
+                    <p className="text-sm text-gray-600">
+                      Extracts all fields from Gemini without mapping to predefined database fields. 
+                      Captures everything Gemini finds but may be harder to query and filter.
+                    </p>
+                  </div>
+                  
+                  <div className={`p-4 rounded-lg border-2 ${extractionMode === 'mapped' ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                      Mapped Extraction
+                      <span className="ml-2 px-1.5 py-0.5 bg-yellow-500 text-white text-xs rounded-full font-bold">BETA</span>
+                    </h5>
+                    <p className="text-sm text-gray-600">
+                      Maps Gemini output to predefined database fields. 
+                      Better for querying and filtering but may miss unexpected fields.
+                      <span className="block mt-1 text-yellow-600 font-medium">⚠️ Experimental - field mapping may not be perfect</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={handleToggleExtractionMode}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    extractionMode === 'pure' 
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                  }`}
+                >
+                  Switch to {extractionMode === 'pure' ? 'Mapped' : 'Pure'} Extraction
+                  {extractionMode === 'pure' && (
+                    <span className="ml-1 px-1 py-0.5 bg-yellow-500 text-white text-xs rounded-full font-bold">BETA</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowExtractionModeModal(false)}
+                  className="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg font-medium hover:bg-gray-300 transition-colors"
                 >
                   Cancel
                 </button>
