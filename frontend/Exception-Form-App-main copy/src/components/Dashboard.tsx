@@ -327,13 +327,15 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
 
   const handleEditRawJson = () => {
     console.log('Edit Raw JSON button clicked');
-    if (selectedFormDetails?.form?.raw_gemini_json) {
+    // For pure extraction mode, use raw_extracted_data; for mapped mode, use raw_gemini_json
+    const rawDataField = extractionMode === 'pure' ? 'raw_extracted_data' : 'raw_gemini_json';
+    if (selectedFormDetails?.form?.[rawDataField]) {
       try {
-        const parsed = JSON.parse(selectedFormDetails.form.raw_gemini_json);
+        const parsed = JSON.parse(selectedFormDetails.form[rawDataField]);
         setRawJsonEdit(JSON.stringify(parsed, null, 2));
         setIsEditingRawJson(true);
       } catch {
-        setRawJsonEdit(selectedFormDetails.form.raw_gemini_json);
+        setRawJsonEdit(selectedFormDetails.form[rawDataField]);
         setIsEditingRawJson(true);
       }
     }
@@ -347,19 +349,24 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       setSaveLoading(true);
       setSaveError('');
       
-      const response = await fetch(`http://localhost:8000/api/form/${selectedFormDetails.form.id}?extraction_mode=${extractionMode}`, {
+      // For pure extraction mode, save to raw_extracted_data; for mapped mode, save to raw_gemini_json
+      const rawDataField = extractionMode === 'pure' ? 'raw_extracted_data' : 'raw_gemini_json';
+      const updateData = { ...selectedFormDetails.form };
+      updateData[rawDataField] = rawJsonEdit;
+      
+      const response = await fetch(`http://localhost:8000/api/form/${selectedFormDetails?.form?.id}?extraction_mode=${extractionMode}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          form: { ...selectedFormDetails.form, raw_gemini_json: rawJsonEdit },
+          form: updateData,
           rows: selectedFormDetails.rows 
         }),
       });
       
       const data = await response.json();
       if (response.ok) {
-        // Re-fetch the latest form details
-        const detailsRes = await fetch(`http://localhost:8000/api/form/${selectedFormDetails.form.id}`);
+        // Re-fetch the latest form details with the correct extraction mode
+        const detailsRes = await fetch(`http://localhost:8000/api/form/${selectedFormDetails?.form?.id}?extraction_mode=${extractionMode}`);
         const detailsData = await detailsRes.json();
         setSelectedFormDetails(detailsData);
         setIsEditingRawJson(false);
@@ -1196,9 +1203,9 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-xl font-semibold text-gray-800">
                 Form Details {selectedFormDetails?.form?.form_type && (
-                  <span className={`ml-2 px-2 py-1 text-sm rounded-full ${selectedFormDetails.form.form_type === 'supervisor' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
-                    {selectedFormDetails.form.form_type === 'supervisor' ? 'Supervisor' : 'Hourly'}
-                  </span>
+                                          <span className={`ml-2 px-2 py-1 text-sm rounded-full ${selectedFormDetails?.form?.form_type === 'supervisor' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                          {selectedFormDetails?.form?.form_type === 'supervisor' ? 'Supervisor' : 'Hourly'}
+                        </span>
                 )}
               </h3>
               <button
@@ -1217,7 +1224,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 <>
 
                   {/* Hourly Exception Form Details (View Mode) */}
-                  {(filterType === 'hourly' || (!filterType && selectedFormDetails.form.form_type !== 'supervisor')) && !isEditing && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
+                  {(filterType === 'hourly' || (!filterType && selectedFormDetails?.form?.form_type !== 'supervisor')) && !isEditing && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
                     <div className="mb-4">
                       <div className="flex justify-between items-center mb-4">
                         <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Hourly Exception Claim Form Info</h4>
@@ -1229,20 +1236,20 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                         </button>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-2">
-                        <div><span className="font-medium">Regular Assignment:</span> {selectedFormDetails.form.regular_assignment || 'N/A'}</div>
-                        <div><span className="font-medium">Report:</span> {selectedFormDetails.form.report || 'N/A'}</div>
-                        <div><span className="font-medium">Relief:</span> {selectedFormDetails.form.relief || 'N/A'}</div>
-                        <div><span className="font-medium">Today's Date:</span> {selectedFormDetails.form.todays_date || 'N/A'}</div>
-                        <div><span className="font-medium">Pass Number:</span> {selectedFormDetails.form.pass_number || 'N/A'}</div>
-                        <div><span className="font-medium">Title:</span> {selectedFormDetails.form.title || 'N/A'}</div>
-                        <div><span className="font-medium">Employee Name:</span> {selectedFormDetails.form.employee_name || 'N/A'}</div>
-                        <div><span className="font-medium">RDOS:</span> {selectedFormDetails.form.rdos || 'N/A'}</div>
-                        <div><span className="font-medium">Actual OT Date:</span> {selectedFormDetails.form.actual_ot_date || 'N/A'}</div>
-                        <div><span className="font-medium">DIV:</span> {selectedFormDetails.form.div || 'N/A'}</div>
+                        <div><span className="font-medium">Regular Assignment:</span> {selectedFormDetails?.form?.regular_assignment || 'N/A'}</div>
+                        <div><span className="font-medium">Report:</span> {selectedFormDetails?.form?.report || 'N/A'}</div>
+                        <div><span className="font-medium">Relief:</span> {selectedFormDetails?.form?.relief || 'N/A'}</div>
+                        <div><span className="font-medium">Today's Date:</span> {selectedFormDetails?.form?.todays_date || 'N/A'}</div>
+                        <div><span className="font-medium">Pass Number:</span> {selectedFormDetails?.form?.pass_number || 'N/A'}</div>
+                        <div><span className="font-medium">Title:</span> {selectedFormDetails?.form?.title || 'N/A'}</div>
+                        <div><span className="font-medium">Employee Name:</span> {selectedFormDetails?.form?.employee_name || 'N/A'}</div>
+                        <div><span className="font-medium">RDOS:</span> {selectedFormDetails?.form?.rdos || 'N/A'}</div>
+                        <div><span className="font-medium">Actual OT Date:</span> {selectedFormDetails?.form?.actual_ot_date || 'N/A'}</div>
+                        <div><span className="font-medium">DIV:</span> {selectedFormDetails?.form?.div || 'N/A'}</div>
                       </div>
                       <div className="mb-2">
                         <span className="font-medium">Comments:</span>
-                        <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem]">{selectedFormDetails.form.comments || 'N/A'}</div>
+                        <div className="bg-gray-100 rounded p-2 text-gray-700 min-h-[2rem]">{selectedFormDetails?.form?.comments || 'N/A'}</div>
                       </div>
                       
                       {/* Overtime Time Details */}
@@ -1271,7 +1278,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                   )}
                   {/* Pure Extraction Mode - Show Raw Data */}
                   {console.log('Pure extraction section, extractionMode:', extractionMode, 'raw_extracted_data:', selectedFormDetails?.form?.raw_extracted_data)}
-                  {extractionMode === 'pure' && (
+                  {extractionMode === 'pure' && selectedFormDetails?.form && (
                     <div className="mb-6">
                       {selectedFormDetails.form.raw_extracted_data ? (
                         <>
@@ -1324,10 +1331,10 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                                 <pre className="text-sm text-gray-800 whitespace-pre-wrap overflow-x-auto">
                                   {(() => {
                                     try {
-                                      const parsed = JSON.parse(selectedFormDetails.form.raw_extracted_data);
+                                      const parsed = JSON.parse(selectedFormDetails?.form?.raw_extracted_data || '{}');
                                       return JSON.stringify(parsed, null, 2);
                                     } catch {
-                                      return selectedFormDetails.form.raw_extracted_data;
+                                      return selectedFormDetails?.form?.raw_extracted_data || 'No data available';
                                     }
                                   })()}
                                 </pre>
@@ -1357,12 +1364,12 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                   )}
 
                   {/* If no fields extracted */}
-                  {!(selectedFormDetails.form.regular_assignment || selectedFormDetails.form.report || selectedFormDetails.form.relief || selectedFormDetails.form.todays_date || selectedFormDetails.form.pass_number || selectedFormDetails.form.employee_name || selectedFormDetails.form.title || selectedFormDetails.form.rdos || selectedFormDetails.form.actual_ot_date || selectedFormDetails.form.div || selectedFormDetails.form.supervisor_name || selectedFormDetails.form.supervisor_pass_no || selectedFormDetails.form.oto || selectedFormDetails.form.oto_amount_saved || selectedFormDetails.form.entered_in_uts || selectedFormDetails.form.comments) && extractionMode === 'mapped' && (
+                  {selectedFormDetails?.form && !(selectedFormDetails.form.regular_assignment || selectedFormDetails.form.report || selectedFormDetails.form.relief || selectedFormDetails.form.todays_date || selectedFormDetails.form.pass_number || selectedFormDetails.form.employee_name || selectedFormDetails.form.title || selectedFormDetails.form.rdos || selectedFormDetails.form.actual_ot_date || selectedFormDetails.form.div || selectedFormDetails.form.supervisor_name || selectedFormDetails.form.supervisor_pass_no || selectedFormDetails.form.oto || selectedFormDetails.form.oto_amount_saved || selectedFormDetails.form.entered_in_uts || selectedFormDetails.form.comments) && extractionMode === 'mapped' && (
                     <div className="text-gray-500 mb-4">No details were extracted from this form.</div>
                   )}
 
 
-                  {(filterType === 'supervisor' || (!filterType && selectedFormDetails.form.form_type === 'supervisor')) && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
+                  {(filterType === 'supervisor' || (!filterType && selectedFormDetails?.form?.form_type === 'supervisor')) && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
                     <div className="mb-6">
                       {/* Supervisor Form Details (View Mode) */}
                       <div className="mb-6">

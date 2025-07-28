@@ -1448,6 +1448,10 @@ def update_form(form_id):
         if 'raw_gemini_json' in form:
             print(f"Updating raw_gemini_json for form {form_id}: {form['raw_gemini_json'][:100]}...")
             c.execute('UPDATE exception_forms SET raw_gemini_json = ? WHERE id = ?', (form['raw_gemini_json'], form_id))
+        # PATCH: Update raw_extracted_data if present
+        if 'raw_extracted_data' in form:
+            print(f"Updating raw_extracted_data for form {form_id}: {form['raw_extracted_data'][:100]}...")
+            c.execute('UPDATE exception_forms SET raw_extracted_data = ? WHERE id = ?', (form['raw_extracted_data'], form_id))
         # Delete old rows
         c.execute('DELETE FROM exception_form_rows WHERE form_id = ?', (form_id,))
         # Insert new rows
