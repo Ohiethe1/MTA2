@@ -809,6 +809,37 @@ def login():
     print("Login failed")
     return jsonify({"error": "Invalid credentials"}), 401
 
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.json
+    print("Registration data received:", data)
+    
+    # Validate input
+    if not data.get('username') or not data.get('password'):
+        return jsonify({"error": "Username and password are required"}), 400
+    
+    if len(data['username']) < 3:
+        return jsonify({"error": "Username must be at least 3 characters long"}), 400
+    
+    if len(data['password']) < 6:
+        return jsonify({"error": "Password must be at least 6 characters long"}), 400
+    
+    # Try to add the user
+    if add_user(data['username'], data['password']):
+        print("Registration successful")
+        return jsonify({
+            "message": "Registration successful! You can now login.",
+            "user": {
+                "id": data['username'],
+                "name": data['username'],
+                "bscId": data['username'],
+                "role": "user"
+            }
+        }), 201
+    else:
+        print("Registration failed - username already exists")
+        return jsonify({"error": "Username already exists"}), 409
+
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     with sqlite3.connect('forms.db', timeout=10) as conn:

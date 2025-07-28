@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import mtaLogo from "../assets/mta-logo.png";
 
@@ -141,7 +141,15 @@ const Login = () => {
               </div>
             </form>
 
-            {/* (Demo credentials UI removed) */}
+            {/* Registration link */}
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{' '}
+                <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
+                  Sign Up Here
+                </Link>
+              </p>
+            </div>
           </div>
         </div>
       </div>
