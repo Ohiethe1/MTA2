@@ -524,8 +524,6 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   // Use backend summary stats for cards
   const totalForms = filteredForms.length;
   const totalOvertime = dashboard?.total_overtime ?? '0h 0m';
-  const totalJobNumbers = dashboard?.total_job_numbers ?? 0;
-  const uniqueJobNumbers = dashboard?.unique_job_numbers ?? 0;
   const mostRelevantJob = dashboard?.most_relevant_position ?? { position: 'N/A', count: 0 };
   const mostRelevantLocation = dashboard?.most_relevant_location ?? { location: 'N/A', count: 0 };
 
@@ -669,94 +667,78 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       </div>
 
       {/* Tracker Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8 items-stretch">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8 items-stretch justify-items-center">
         {/* General Dashboard Cards */}
         {!filterType && (
           <>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Forms</div>
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Total Forms</div>
                   <div className="text-2xl font-bold text-gray-900">{totalForms}</div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Overtime</div>
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Total Overtime</div>
                   <div className="text-2xl font-bold text-gray-900">{totalOvertime}</div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Job Numbers</div>
-                  <div className="text-2xl font-bold text-gray-900">{totalJobNumbers}</div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
-                    {uniqueJobNumbers} unique
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Most Relevant Position</div>
-                  <div className="text-lg font-bold text-gray-900 truncate">
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Most Relevant Position</div>
+                  <div className="text-xl font-bold text-gray-900 truncate">
                     {mostRelevantJob.position}
                   </div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
+                  <div className="text-sm text-gray-400 font-medium mt-2">
                     {mostRelevantJob.count} forms
                   </div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Most Relevant Line/Location</div>
-                  <div className="text-lg font-bold text-gray-900 truncate">
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Most Relevant Line/Location</div>
+                  <div className="text-xl font-bold text-gray-900 truncate">
                     {mostRelevantLocation.location}
                   </div>
-                  <div className="text-xs text-gray-500 font-medium mt-1">
+                  <div className="text-sm text-gray-500 font-medium mt-1">
                     {(() => {
                       if (!filterType && mostRelevantLocation.form_type) {
                         return mostRelevantLocation.form_type === 'supervisor' ? '(supervisor)' : '(hourly employees)';
@@ -764,7 +746,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                       return '';
                     })()}
                   </div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
+                  <div className="text-sm text-gray-400 font-medium mt-2">
                     {mostRelevantLocation.count} forms
                   </div>
                 </div>
@@ -775,90 +757,73 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         {/* Hourly Employees Dashboard Cards */}
         {filterType === 'hourly' && (
           <>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Forms</div>
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Total Forms</div>
                   <div className="text-2xl font-bold text-gray-900">{totalForms}</div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[200px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Overtime</div>
-                  <div className="text-2xl font-bold text-gray-900">{totalOvertime}</div>
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Total Overtime</div>
+                  <div className="text-3xl font-bold text-gray-900">{totalOvertime}</div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[200px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Job Numbers</div>
-                  <div className="text-2xl font-bold text-gray-900">{totalJobNumbers}</div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
-                    {uniqueJobNumbers} unique
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Most Relevant Position</div>
-                  <div className="text-lg font-bold text-gray-900 truncate">
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Most Relevant Position</div>
+                  <div className="text-xl font-bold text-gray-900 truncate">
                     {mostRelevantJob.position}
                   </div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
+                  <div className="text-sm text-gray-400 font-medium mt-2">
                     {mostRelevantJob.count} forms
                   </div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[200px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Most Relevant Line/Location</div>
-                  <div className="text-lg font-bold text-gray-900 truncate">
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Most Relevant Line/Location</div>
+                  <div className="text-xl font-bold text-gray-900 truncate">
                     {mostRelevantLocation.location}
                   </div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
+                  <div className="text-sm text-gray-400 font-medium mt-2">
                     {mostRelevantLocation.count} forms
                   </div>
                 </div>
@@ -869,75 +834,75 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         {/* Supervisor Dashboard Cards */}
         {filterType === 'supervisor' && (
           <>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Forms</div>
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Total Forms</div>
                   <div className="text-2xl font-bold text-gray-900">{totalForms}</div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Total Overtime</div>
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Total Overtime</div>
                   <div className="text-2xl font-bold text-gray-900">{totalOvertime}</div>
                 </div>
               </div>
             </div>
             {/* Only show Most Common Reason for Overtime if supervisor dashboard */}
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-yellow-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2a4 4 0 014-4h2a4 4 0 014 4v2" />
                       <circle cx="12" cy="7" r="4" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Most Common Reason</div>
-                  <div className="text-lg font-bold text-gray-900 truncate">
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Most Common Reason</div>
+                  <div className="text-lg font-bold text-gray-900 leading-tight break-words">
                     {dashboard?.most_common_reason?.reason || 'N/A'}
                   </div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
+                  <div className="text-sm text-gray-400 font-medium mt-2">
                     {dashboard?.most_common_reason?.count || 0} forms
                   </div>
                 </div>
               </div>
             </div>
             {/* Most Relevant Line/Location for supervisor forms only */}
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hover:shadow-xl transition-shadow h-full min-h-[160px] flex flex-col justify-between">
-              <div className="flex items-start space-x-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300 h-full min-h-[160px] flex flex-col justify-between transform hover:scale-105">
+              <div className="flex items-start space-x-6">
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Most Relevant Line/Location</div>
-                  <div className="text-lg font-bold text-gray-900 truncate">
+                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Most Relevant Line/Location</div>
+                  <div className="text-xl font-bold text-gray-900 truncate">
                     {mostRelevantLocation.location}
                   </div>
-                  <div className="text-xs text-gray-400 font-medium mt-1">
+                  <div className="text-sm text-gray-400 font-medium mt-2">
                     {mostRelevantLocation.count} forms
                   </div>
                 </div>
@@ -945,6 +910,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
             </div>
           </>
         )}
+        </div>
       </div>
 
       {/* Uploaded Forms Table */}

@@ -75,7 +75,9 @@ def init_exception_form_db():
             entered_into_uts TEXT,
             raw_gemini_json TEXT,
             raw_extracted_data TEXT,
-            extraction_mode TEXT
+            extraction_mode TEXT,
+            raw_extracted_data_pure TEXT,
+            raw_extracted_data_mapped TEXT
         )
     ''')
     c.execute('''
@@ -427,10 +429,8 @@ def store_exception_form(form_data, rows, username, form_type=None, upload_date=
         c.execute('''
             INSERT INTO exception_forms (
                 pass_number, title, employee_name, rdos, actual_ot_date, div, comments, supervisor_name, supervisor_pass_no, oto, oto_amount_saved, entered_in_uts, regular_assignment, report, relief, todays_date, status, username, ocr_lines, form_type, upload_date, file_name, reg, superintendent_authorization_signature, superintendent_authorization_pass, superintendent_authorization_date, entered_into_uts, raw_gemini_json,
-                overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, amount,
-                reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other,
-                raw_extracted_data, extraction_mode
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                overtime_hours, report_loc, overtime_location, report_time, relief_time, date_of_overtime, job_number, rc_number, acct_number, reason_rdo, reason_absentee_coverage, reason_no_lunch, reason_early_report, reason_late_clear, reason_save_as_oto, reason_capital_support_go, reason_other, amount, raw_extracted_data, extraction_mode, raw_extracted_data_pure, raw_extracted_data_mapped
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             form_data.get('pass_number', ''),
             form_data.get('title', ''),
@@ -469,7 +469,6 @@ def store_exception_form(form_data, rows, username, form_type=None, upload_date=
             form_data.get('job_number', ''),
             form_data.get('rc_number', ''),
             form_data.get('acct_number', ''),
-            form_data.get('amount', ''),
             form_data.get('reason_rdo', 0),
             form_data.get('reason_absentee_coverage', 0),
             form_data.get('reason_no_lunch', 0),
@@ -478,8 +477,11 @@ def store_exception_form(form_data, rows, username, form_type=None, upload_date=
             form_data.get('reason_save_as_oto', 0),
             form_data.get('reason_capital_support_go', 0),
             form_data.get('reason_other', 0),
+            form_data.get('amount', ''),
             form_data.get('raw_extracted_data', ''),
-            form_data.get('extraction_mode', '')
+            form_data.get('extraction_mode', ''),
+            form_data.get('raw_extracted_data_pure', ''),
+            form_data.get('raw_extracted_data_mapped', '')
         ))
         form_id = c.lastrowid
         # Insert rows if any
