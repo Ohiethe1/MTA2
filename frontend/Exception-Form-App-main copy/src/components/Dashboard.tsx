@@ -49,7 +49,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const [isEditingRawJson, setIsEditingRawJson] = useState(false);
   const [rawJsonEdit, setRawJsonEdit] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
-  const [extractionMode, setExtractionMode] = useState<'pure' | 'mapped'>('mapped');
+  const [extractionMode, setExtractionMode] = useState<'pure' | 'mapped' | 'combined'>('combined');
   const [showExtractionModeModal, setShowExtractionModeModal] = useState(false);
   // const { user } = useAuth ? useAuth() : { user: null };
 

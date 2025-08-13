@@ -1037,9 +1037,9 @@ def is_blank_or_crossed_out(image_path):
         
         # For Pure Extraction mode, be extremely lenient - process almost everything
         if PURE_GEMINI_EXTRACTION:
-            # Only skip if completely blank
+            # Only skip if completely blank (very low threshold)
             nonwhite = sum(1 for p in img.getdata() if p < 240)
-            if nonwhite < 100:  # Very low threshold for pure extraction
+            if nonwhite < 10:  # Extremely low threshold for pure extraction
                 print(f"Pure Extraction: Segment appears completely blank (only {nonwhite} non-white pixels)")
                 return True
             print(f"Pure Extraction: Processing segment with {nonwhite} non-white pixels")
