@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Tuple
 load_dotenv()
 
 # Configuration flags for extraction optimization
-PURE_GEMINI_EXTRACTION = False  # Set to True to use pure extraction
+PURE_GEMINI_EXTRACTION = True  # Set to True to use pure extraction
 ENHANCED_FORM_DETECTION = True  # Enable advanced form detection for maximum overtime slip extraction
 MAX_SEGMENTS_PER_PAGE = 6  # Maximum number of segments to extract per PDF page
 
