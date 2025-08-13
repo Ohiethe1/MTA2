@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify, g, Response
 from flask_cors import CORS
 from model import train_model
@@ -17,8 +18,13 @@ import io
 import json
 from typing import Dict, Any, List, Tuple
 
-# Configuration flag for extraction mode
+# Load environment variables from .env file
+load_dotenv()
+
+# Configuration flags for extraction optimization
 PURE_GEMINI_EXTRACTION = False  # Set to True to use pure extraction
+ENHANCED_FORM_DETECTION = True  # Enable advanced form detection for maximum overtime slip extraction
+MAX_SEGMENTS_PER_PAGE = 6  # Maximum number of segments to extract per PDF page
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -41,17 +47,166 @@ if GEMINI_API_KEY:
 else:
     gemini_model = None
 
-def gemini_extract_file_details(file_path, prompt="Extract all relevant details from this document as structured JSON."):
+def _segment_similarity(segment1_data, segment2_data):
+    """
+    Simple similarity check to avoid processing duplicate segments.
+    Returns True if segments are similar enough to be considered duplicates.
+    """
+    try:
+        # Simple byte comparison for exact duplicates
+        if segment1_data == segment2_data:
+            return True
+        
+        # For more sophisticated similarity, we could implement image hashing
+        # For now, just check if they're the same size and have similar byte patterns
+        if len(segment1_data) == len(segment2_data):
+            # Check if they're very similar (90%+ same bytes)
+            same_bytes = sum(1 for a, b in zip(segment1_data, segment2_data) if a == b)
+            similarity = same_bytes / len(segment1_data)
+            return similarity > 0.9
+        
+        return False
+    except Exception:
+        return False
+
+def detect_multiple_forms_in_document(file_path, form_type):
+    """
+    Advanced detection of multiple forms in a single document.
+    Returns a list of detected form regions.
+    """
+    try:
+        if file_path.lower().endswith('.pdf'):
+            # For PDFs, use the existing segmentation logic
+            return None  # Let the main logic handle it
+        
+        # For images, try to detect multiple form regions
+        from PIL import Image, ImageEnhance
+        import numpy as np
+        
+        img = Image.open(file_path)
+        width, height = img.size
+        
+        # Convert to grayscale for analysis
+        gray_img = img.convert('L')
+        
+        # Look for horizontal lines that might separate forms
+        # This is a simple heuristic - look for rows with low pixel values (dark lines)
+        form_regions = []
+        
+        # Start with the full image
+        form_regions.append((0, height))
+        
+        # Look for potential horizontal separators
+        for y in range(height // 4, height * 3 // 4, height // 8):
+            # Check if this row has a dark line (potential separator)
+            row_pixels = [gray_img.getpixel((x, y)) for x in range(0, width, width // 10)]
+            avg_brightness = sum(row_pixels) / len(row_pixels)
+            
+            # If this row is significantly darker than surrounding rows, it might be a separator
+            if avg_brightness < 100:  # Threshold for dark lines
+                # Check if we can split here
+                if y > height // 4 and y < height * 3 // 4:
+                    # Split the image at this point
+                    form_regions = [
+                        (0, y),
+                        (y, height)
+                    ]
+                    break
+        
+        # If we found potential splits, create segments
+        if len(form_regions) > 1:
+            segments = []
+            for start_y, end_y in form_regions:
+                if end_y - start_y > height // 3:  # Only if segment is large enough
+                    segment = img.crop((0, start_y, width, end_y))
+                    segments.append(segment)
+            return segments
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error detecting multiple forms: {e}")
+        return None
+
+def gemini_extract_file_details(file_path, prompt=None, form_type=None):
     """
     Uses Google Gemini to extract details from a file (PDF or image).
+    Optimized for maximum overtime slip extraction.
     Returns Gemini's response text or None if not configured.
     """
     if not gemini_model:
         print("Gemini API key not set. Skipping Gemini extraction.")
         return None
+    
+    # Enhanced prompt for maximum overtime slip extraction
+    if prompt is None:
+        if form_type == 'hourly':
+            prompt = """You are an expert at extracting overtime slip information from NYC Transit forms. 
+            
+            CRITICAL: Look for MULTIPLE overtime entries on this form. Each form may contain several overtime slips.
+            
+            Extract ALL overtime information you can find, including:
+            - Employee details (pass number, name, title, RDOS)
+            - Multiple overtime entries with times, locations, and reasons
+            - Exception codes and descriptions
+            - Line locations and run numbers
+            - All time fields (exception time from/to, overtime, bonus, night differential)
+            - Job numbers and account information
+            
+            If you see multiple overtime entries, structure them as separate entries in an 'entries' array.
+            Be thorough - extract every piece of overtime information visible on the form.
+            
+            Return as structured JSON with all fields populated."""
+        elif form_type == 'supervisor':
+            prompt = """You are an expert at extracting supervisor overtime authorization information from NYC Transit forms.
+            
+            CRITICAL: This image may contain PARTIAL forms, COMPLETE forms, or MULTIPLE forms. Extract EVERYTHING you can see.
+            
+            AGGRESSIVE EXTRACTION RULES:
+            1. Look for ANY text, numbers, or form elements - even if incomplete
+            2. Extract employee details from ANY visible section (pass number, name, title, RDOS)
+            3. Look for overtime information in ANY format (times, hours, locations)
+            4. Find job numbers, RC numbers, account numbers wherever they appear
+            5. Extract ANY reason checkboxes or text that might indicate overtime reasons
+            6. Look for supervisor/superintendent signatures, dates, or pass numbers
+            7. Capture ANY comments or additional information
+            
+            EXTRACTION STRATEGY:
+            - If you see a complete form: extract all fields
+            - If you see a partial form: extract whatever fields are visible
+            - If you see multiple forms: structure them in an 'entries' array
+            - If you see form fragments: extract what you can and mark incomplete fields as null
+            - If you see ANY text that might be form-related: include it
+            
+            BE EXTREMELY THOROUGH - extract every single piece of information visible, even if it seems incomplete or unclear.
+            
+            Return as structured JSON with all visible fields populated. Use null for missing fields, but extract everything you can see."""
+        else:
+            prompt = """You are an expert at extracting overtime slip information from NYC Transit forms.
+            
+            CRITICAL: Look for MULTIPLE overtime entries on this form. Each form may contain several overtime slips.
+            
+            Extract ALL overtime information you can find, including:
+            - Employee details (pass number, name, title, RDOS)
+            - Multiple overtime entries with times, locations, and reasons
+            - Exception codes and descriptions
+            - Line locations and run numbers
+            - All time fields (exception time from/to, overtime, bonus, night differential)
+            - Job numbers and account information
+            - Supervisor authorization details
+            
+            If you see multiple overtime entries, structure them as separate entries in an 'entries' array.
+            Be thorough - extract every piece of overtime information visible on the form.
+            
+            Return as structured JSON with all fields populated."""
+    
     sample_file = genai.upload_file(path=file_path, display_name=os.path.basename(file_path))
     print(f"Uploaded file '{sample_file.display_name}' as: {sample_file.uri}")
-    response = gemini_model.generate_content([sample_file, prompt])
+    
+    # Use more detailed prompt for better extraction
+    enhanced_prompt = f"{prompt}\n\nIMPORTANT: This form may contain multiple overtime entries. Extract EVERY single overtime slip you can identify. Look for patterns, repeated sections, or multiple employee entries. If you find multiple overtime slips, structure them in an 'entries' array."
+    
+    response = gemini_model.generate_content([sample_file, enhanced_prompt])
     print("Gemini extraction response:", response.text)
     return response.text
 
@@ -127,12 +282,32 @@ def process_gemini_extraction_dual(gemini_output: str, form_type: str = None) ->
     # Check if this is a multi-form response
     if isinstance(raw_data, dict) and 'entries' in raw_data and isinstance(raw_data['entries'], list):
         print("Detected multi-form response with entries array")
+        
+        # Extract employee data from main response for supervisor forms
+        employee_data = {}
+        if form_type == 'supervisor':
+            # Handle both old and new formats
+            if 'employee' in raw_data:
+                employee_data = raw_data['employee'] or {}
+                print(f"Extracted employee data (old format): {employee_data}")
+            elif 'employeeDetails' in raw_data:
+                employee_data = raw_data['employeeDetails'] or {}
+                print(f"Extracted employee data (new format): {employee_data}")
+        
         for i, entry in enumerate(raw_data['entries']):
             print(f"Processing entry {i+1}: {entry}")
-            form_data, rows = process_single_form_combined(entry, form_type, raw_gemini_json)
+            
+            # Merge employee data with entry data for supervisor forms
+            if form_type == 'supervisor' and employee_data:
+                merged_entry = {**employee_data, **entry}
+                print(f"Merged entry with employee data: {merged_entry}")
+            else:
+                merged_entry = entry
+            
+            form_data, rows = process_single_form_combined(merged_entry, form_type, raw_gemini_json)
             individual_json = {
                 "form_type": raw_data.get("form_type", "SUPERVISOR'S OVERTIME AUTHORIZATION"),
-                "entry": entry
+                "entry": merged_entry
             }
             all_forms.append((form_data, rows, json.dumps(individual_json)))
     else:
@@ -528,14 +703,114 @@ def process_single_form(data, form_type=None):
     for k, v in flat_data.items():
         norm_k = normalize_key(k)
         print(f"Mapping: '{k}' -> '{norm_k}' = '{v}'")
+        
+        # Handle nested employee data first
+        if k == "employee_pass_number" or k == "employee_pass":
+            form_data["pass_number"] = v
+        elif k == "employee_name" or k == "employee_name":
+            form_data["employee_name"] = v
+        elif k == "employee_title" or k == "employee_title":
+            form_data["title"] = v
+        elif k == "employee_rdoe" or k == "employee_rdo":
+            form_data["rdos"] = v
+        elif k == "employee_rc_number" or k == "employee_rc":
+            form_data["rc_number"] = v
+        
+        # Handle direct field mappings for merged data
+        elif k == "name":
+            form_data["employee_name"] = v
+        elif k == "rduos" or k == "rdo":
+            form_data["rdos"] = v
+        
+        # Handle new camelCase field names
+        elif k == "employeeName":
+            form_data["employee_name"] = v
+        elif k == "passNumber":
+            form_data["pass_number"] = v
+        elif k == "rDOs":
+            form_data["rdos"] = v
+        elif k == "rcNumber":
+            form_data["rc_number"] = v
+        elif k == "jobNumber":
+            form_data["job_number"] = v
+        elif k == "overtimeLocation":
+            form_data["overtime_location"] = v
+        elif k == "reportTime":
+            form_data["report_time"] = v
+        elif k == "reliefTime":
+            form_data["relief_time"] = v
+        elif k == "overtimeHours":
+            form_data["overtime_hours"] = v
+        elif k == "accountNumber":
+            form_data["acct_number"] = v
+        elif k == "reportLocation":
+            form_data["report_loc"] = v
+        
+        # Handle various date field formats
+        elif k in ["DATE", "date", "s_m", "W/T", "w_t"]:
+            # Map various date fields to date_of_overtime
+            if v and str(v).strip() and str(v).strip() != "None":
+                form_data["date_of_overtime"] = str(v).strip()
+                print(f"Mapped date field '{k}' -> date_of_overtime: {v}")
+        
+        # Handle assignment/job number variations
+        elif k in ["ASSIGNMENT", "assignment"]:
+            if v and str(v).strip() and str(v).strip() != "None":
+                form_data["pass_number"] = str(v).strip()
+                print(f"Mapped assignment field '{k}' -> pass_number: {v}")
+        elif k in ["RBG", "rbg"]:
+            if v and str(v).strip() and str(v).strip() != "None":
+                form_data["job_number"] = str(v).strip()
+                print(f"Mapped RBG field '{k}' -> job_number: {v}")
+        
         # Handle reason_for_overtime as string or list
-        if norm_k == "reason_for_overtime":
+        elif norm_k == "reason_for_overtime":
             if isinstance(v, str):
                 v = [v]
             for reason in v:
                 reason_norm = normalize_key(reason)
                 if reason_norm in checkbox_map:
                     form_data[checkbox_map[reason_norm]] = True
+        # Handle reason field mapping for supervisor forms
+        elif norm_k == "reason":
+            # Map reason to appropriate checkbox
+            reason_lower = str(v).lower()
+            if "rdo" in reason_lower:
+                form_data["reason_rdo"] = True
+            elif "absentee" in reason_lower or "coverage" in reason_lower:
+                form_data["reason_absentee_coverage"] = True
+            elif "lunch" in reason_lower:
+                form_data["reason_no_lunch"] = True
+            elif "early" in reason_lower and "report" in reason_lower:
+                form_data["reason_early_report"] = True
+            elif "late" in reason_lower and "clear" in reason_lower:
+                form_data["reason_late_clear"] = True
+            elif "oto" in reason_lower:
+                form_data["reason_save_as_oto"] = True
+            elif "capital" in reason_lower or "support" in reason_lower:
+                form_data["reason_capital_support_go"] = True
+            else:
+                form_data["reason_other"] = True
+        
+        # Handle new reasonForOvertime object format
+        elif k == "reasonForOvertime" and isinstance(v, dict):
+            # Map boolean values from reasonForOvertime object
+            if v.get('rdo'):
+                form_data["reason_rdo"] = True
+            if v.get('absenteeCoverage'):
+                form_data["reason_absentee_coverage"] = True
+            if v.get('noLunch'):
+                form_data["reason_no_lunch"] = True
+            if v.get('earlyReport'):
+                form_data["reason_early_report"] = True
+            if v.get('lateClear'):
+                form_data["reason_late_clear"] = True
+            if v.get('saveAsOto'):
+                form_data["reason_save_as_oto"] = True
+            if v.get('capitalSupportGo'):
+                form_data["reason_capital_support_go"] = True
+            if v.get('other'):
+                form_data["reason_other"] = True
         # Custom logic for ambiguous keys
         elif norm_k == "pass":
             if "superintendent_authorization" in k.lower():
@@ -553,6 +828,10 @@ def process_single_form(data, form_type=None):
         elif norm_k == "job":
             form_data["job_number"] = v
         elif norm_k == "rc":
+            form_data["rc_number"] = v
+        elif norm_k == "rc_number":
+            form_data["rc_number"] = v
+        elif k in ["RC#", "RC#", "rc#"]:
             form_data["rc_number"] = v
         elif norm_k == "report_loc":
             form_data["report_loc"] = v
@@ -572,6 +851,10 @@ def process_single_form(data, form_type=None):
             form_data["rdos"] = v
         elif norm_k == "acct":
             form_data["acct_number"] = v
+        elif norm_k == "account_number":
+            form_data["acct_number"] = v
+        elif norm_k == "report_location":
+            form_data["report_loc"] = v
         elif norm_k == "superintendents_authorization":
             # Handle combined superintendent authorization field (e.g., "713026 07/06/25")
             if isinstance(v, str) and ' ' in v:
@@ -640,6 +923,12 @@ def process_single_form(data, form_type=None):
     print("DASHBOARD FIELD VALUES:")
     for field in dashboard_fields:
         print(f"  {field}: {form_data.get(field)}")
+    
+    # Debug: Show the final form_data after all processing
+    print("DEBUG: Final form_data after dashboard field lookup:")
+    for key, value in form_data.items():
+        if value and key in ['pass_number', 'employee_name', 'title', 'job_number', 'rc_number', 'overtime_hours', 'report_loc', 'overtime_location']:
+            print(f"  {key}: {value}")
 
     # For exception claim (hourly) forms, build a row if relevant fields are present
     row_fields = [
@@ -657,21 +946,126 @@ def process_single_form(data, form_type=None):
         rows = [row]
     else:
         rows = []
+    # Debug: Show what we're returning from process_single_form
+    print("DEBUG: Returning from process_single_form:")
+    for key, value in form_data.items():
+        if value and key in ['pass_number', 'employee_name', 'title', 'job_number', 'rc_number', 'overtime_hours', 'report_loc', 'overtime_location']:
+            print(f"  {key}: {value}")
+    
     return form_data, rows
 
+def is_duplicate_form(form_data, form_type):
+    """
+    Check if a form is a duplicate based on key fields.
+    Returns True if duplicate found, False otherwise.
+    """
+    try:
+        import sqlite3
+        
+        # For Pure Extraction mode, be very lenient - only check for exact duplicates
+        if PURE_GEMINI_EXTRACTION:
+            print("Pure Extraction mode: Skipping strict duplicate detection")
+            return False
+        
+        # Key fields for duplicate detection
+        pass_number = form_data.get('pass_number', '')
+        employee_name = form_data.get('employee_name', '')
+        overtime_hours = form_data.get('overtime_hours', '')
+        date_of_overtime = form_data.get('date_of_overtime', '')
+        job_number = form_data.get('job_number', '')
+        
+        # If we don't have the key fields, we can't check for duplicates
+        if not pass_number or not overtime_hours or not date_of_overtime:
+            print(f"Cannot check for duplicates - missing key fields: pass_number={pass_number}, overtime_hours={overtime_hours}, date_of_overtime={date_of_overtime}")
+            return False
+        
+        with sqlite3.connect('forms.db', timeout=10) as conn:
+            c = conn.cursor()
+            
+            # Check for existing forms with same key fields
+            query = '''
+                SELECT id, employee_name, overtime_hours, date_of_overtime, job_number 
+                FROM exception_forms 
+                WHERE form_type = ? 
+                AND pass_number = ? 
+                AND overtime_hours = ? 
+                AND date_of_overtime = ?
+            '''
+            
+            c.execute(query, (form_type, pass_number, overtime_hours, date_of_overtime))
+            existing_forms = c.fetchall()
+            
+            if existing_forms:
+                print(f"Duplicate detected: {len(existing_forms)} existing form(s) with same pass_number={pass_number}, overtime_hours={overtime_hours}, date_of_overtime={date_of_overtime}")
+                for existing in existing_forms:
+                    print(f"  Existing form ID {existing[0]}: {existing[1]} - {existing[2]} hours on {existing[3]} (Job: {existing[4]})")
+                return True
+            
+            # Additional check: if job_number is also the same, it's definitely a duplicate
+            if job_number:
+                query_with_job = '''
+                    SELECT id, employee_name, overtime_hours, date_of_overtime, job_number 
+                    FROM exception_forms 
+                    WHERE form_type = ? 
+                    AND pass_number = ? 
+                    AND overtime_hours = ? 
+                    AND date_of_overtime = ? 
+                    AND job_number = ?
+                '''
+                
+                c.execute(query_with_job, (form_type, pass_number, overtime_hours, date_of_overtime, job_number))
+                existing_with_job = c.fetchall()
+                
+                if existing_with_job:
+                    print(f"Duplicate detected (with job number): {len(existing_with_job)} existing form(s) with same pass_number={pass_number}, overtime_hours={overtime_hours}, date_of_overtime={date_of_overtime}, job_number={job_number}")
+                    return True
+            
+            print(f"No duplicates found for: {employee_name} - {overtime_hours} hours on {date_of_overtime}")
+            return False
+            
+    except Exception as e:
+        print(f"Error checking for duplicates: {e}")
+        # If we can't check for duplicates, allow the form to be processed
+        return False
+
 def is_blank_or_crossed_out(image_path):
-    # Simple blank/crossed-out detection: check if almost all pixels are white or if very little text is extracted
-    # You can improve this with OCR or more advanced image analysis
+    # Enhanced blank/crossed-out detection: be less aggressive to capture more forms
     try:
         from PIL import Image
         img = Image.open(image_path).convert('L')
-        # Threshold: count non-white pixels
+        width, height = img.size
+        
+        # For Pure Extraction mode, be extremely lenient - process almost everything
+        if PURE_GEMINI_EXTRACTION:
+            # Only skip if completely blank
+            nonwhite = sum(1 for p in img.getdata() if p < 240)
+            if nonwhite < 100:  # Very low threshold for pure extraction
+                print(f"Pure Extraction: Segment appears completely blank (only {nonwhite} non-white pixels)")
+                return True
+            print(f"Pure Extraction: Processing segment with {nonwhite} non-white pixels")
+            return False
+        
+        # Regular mode: Enhanced blank/crossed-out detection
         nonwhite = sum(1 for p in img.getdata() if p < 240)
-        if nonwhite < 1000:  # Tune this threshold as needed
+        
+        # More lenient threshold - only skip if almost completely blank
+        # This allows partial forms and form fragments to be processed
+        if nonwhite < 500:  # Reduced from 1000 to 500
+            print(f"Segment appears blank (only {nonwhite} non-white pixels)")
             return True
+            
+        # Additional check: if segment is very small, don't skip it
+        if width < 200 or height < 200:
+            print(f"Segment is small ({width}x{height}) but may contain valuable data")
+            return False
+            
+        print(f"Segment has {nonwhite} non-white pixels - processing")
+        return False
+        
     except Exception as e:
         print(f"Error in blank/crossed-out detection: {e}")
-    return False
+        # If we can't determine, process the segment anyway
+        return False
 
 # Flexible field lookup for raw JSON
 
@@ -711,6 +1105,96 @@ def upload_hourly_file():
 def upload_supervisor_file():
     return handle_upload(form_type='supervisor')
 
+@app.route('/cleanup-duplicates', methods=['POST'])
+def cleanup_duplicates():
+    """
+    Clean up duplicate forms in the database.
+    Keeps the first occurrence and removes duplicates.
+    """
+    try:
+        import sqlite3
+        
+        with sqlite3.connect('forms.db', timeout=10) as conn:
+            c = conn.cursor()
+            
+            # Find and remove duplicates based on key fields
+            cleanup_query = '''
+                DELETE FROM exception_forms 
+                WHERE id NOT IN (
+                    SELECT MIN(id) 
+                    FROM exception_forms 
+                    WHERE form_type = 'supervisor'
+                    GROUP BY pass_number, overtime_hours, date_of_overtime, job_number
+                    HAVING pass_number IS NOT NULL 
+                    AND pass_number != '' 
+                    AND overtime_hours IS NOT NULL 
+                    AND overtime_hours != ''
+                    AND date_of_overtime IS NOT NULL 
+                    AND date_of_overtime != ''
+                )
+                AND form_type = 'supervisor'
+            '''
+            
+            # Get count before cleanup
+            c.execute("SELECT COUNT(*) FROM exception_forms WHERE form_type='supervisor'")
+            count_before = c.fetchone()[0]
+            
+            # Execute cleanup
+            c.execute(cleanup_query)
+            deleted_count = c.rowcount
+            
+            # Get count after cleanup
+            c.execute("SELECT COUNT(*) FROM exception_forms WHERE form_type='supervisor'")
+            count_after = c.fetchone()[0]
+            
+            conn.commit()
+            
+            return jsonify({
+                'message': 'Duplicate cleanup completed',
+                'deleted_count': deleted_count,
+                'count_before': count_before,
+                'count_after': count_after
+            }), 200
+            
+    except Exception as e:
+        return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
+
+@app.route('/enable-pure-extraction', methods=['POST'])
+def enable_pure_extraction():
+    """
+    Enable Pure Extraction mode to capture everything from PDFs.
+    """
+    try:
+        global PURE_GEMINI_EXTRACTION
+        PURE_GEMINI_EXTRACTION = True
+        
+        return jsonify({
+            'message': 'Pure Extraction mode enabled',
+            'mode': 'pure',
+            'description': 'System will now capture everything from PDF segments without duplicate detection or strict field validation'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to enable Pure Extraction: {str(e)}'}), 500
+
+@app.route('/disable-pure-extraction', methods=['POST'])
+def disable_pure_extraction():
+    """
+    Disable Pure Extraction mode and return to normal mapped extraction.
+    """
+    try:
+        global PURE_GEMINI_EXTRACTION
+        PURE_GEMINI_EXTRACTION = False
+        
+        return jsonify({
+            'message': 'Pure Extraction mode disabled',
+            'mode': 'mapped',
+            'description': 'System will now use normal mapped extraction with duplicate detection and field validation'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to disable Pure Extraction: {str(e)}'}), 500
+
 # Refactor the upload logic into a helper
 
 def handle_upload(form_type):
@@ -741,48 +1225,160 @@ def handle_upload(form_type):
                 filepath = os.path.join(target_folder, file.filename)
                 file.save(filepath)
 
-                # If supervisor and PDF, split each page into two halves and process each as a form
+                # If supervisor and PDF, use MAXIMUM segmentation to extract ALL possible forms
                 if form_type == 'supervisor' and file.filename.lower().endswith('.pdf'):
+                    print(f"Processing PDF with MAXIMUM extraction: {file.filename}")
                     with pdfplumber.open(filepath) as pdf:
+                        total_pages = len(pdf.pages)
+                        print(f"PDF has {total_pages} pages")
+                        
                         for i, page in enumerate(pdf.pages):
+                            print(f"Processing page {i+1}/{total_pages}")
                             img = page.to_image(resolution=300).original
                             width, height = img.size
-                            # Top half
+                            print(f"Page {i+1} dimensions: {width}x{height}")
+                            
+                            # MAXIMUM segmentation: Extract every possible form region
+                            segments = []
+                            
+                            # Method 1: Standard halves (top/bottom)
                             top_half = img.crop((0, 0, width, height // 2))
-                            top_path = os.path.join(target_folder, f"{os.path.splitext(file.filename)[0]}_page{i+1}_top.png")
-                            top_half.save(top_path)
-                            # Bottom half
                             bottom_half = img.crop((0, height // 2, width, height))
-                            bottom_path = os.path.join(target_folder, f"{os.path.splitext(file.filename)[0]}_page{i+1}_bottom.png")
-                            bottom_half.save(bottom_path)
-                            # Process each half
-                            for img_path in [top_path, bottom_path]:
-                                if is_blank_or_crossed_out(img_path):
-                                    print(f"Skipped blank/crossed-out form: {img_path}")
-                                    continue
-                                # Use Gemini to extract details with dual approach (both pure and mapped)
-                                gemini_output = gemini_extract_file_details(img_path)
-                                print("--- Gemini Output ---")
-                                print(gemini_output)
-                                print("--- END Gemini Output ---")
-                                forms_data, raw_gemini_json = process_gemini_extraction_dual(gemini_output, form_type=form_type) if gemini_output else ([], '')
+                            segments.extend([top_half, bottom_half])
+                            
+                            # Method 2: Quarters for dense pages
+                            if height > 1000:
+                                quarter_height = height // 4
+                                segments.extend([
+                                    img.crop((0, 0, width, quarter_height)),
+                                    img.crop((0, quarter_height, width, quarter_height * 2)),
+                                    img.crop((0, quarter_height * 2, width, quarter_height * 3)),
+                                    img.crop((0, quarter_height * 3, width, height))
+                                ])
+                            
+                            # Method 3: Eighths for very dense pages
+                            if height > 1500:
+                                eighth_height = height // 8
+                                for e in range(8):
+                                    y_start = e * eighth_height
+                                    y_end = (e + 1) * eighth_height if e < 7 else height
+                                    segments.append(img.crop((0, y_start, width, y_end)))
+                            
+                            # Method 4: Tenths for maximum coverage
+                            if height > 2000:
+                                tenth_height = height // 10
+                                for t in range(10):
+                                    y_start = t * tenth_height
+                                    y_end = (t + 1) * tenth_height if t < 9 else height
+                                    segments.append(img.crop((0, y_start, width, y_end)))
+                            
+                            # Method 5: Dynamic segmentation based on content density
+                            try:
+                                gray_img = img.convert('L')
+                                # More aggressive segmentation - check every 1/8 of the page
+                                for y in range(0, height, height // 8):
+                                    if y + height // 8 < height:
+                                        segment = img.crop((0, y, width, y + height // 8))
+                                        segments.append(segment)
                                 
-                                # Process each form from the response
+                                # Additional segments for overlapping coverage
+                                for y in range(height // 16, height, height // 8):
+                                    if y + height // 8 < height:
+                                        segment = img.crop((0, y, width, y + height // 8))
+                                        segments.append(segment)
+                            except Exception as e:
+                                print(f"Dynamic segmentation failed for page {i+1}: {e}")
+                                pass
+                            
+                            # Method 6: Full page as single segment (for forms that span entire page)
+                            segments.append(img)
+                            
+                            print(f"Page {i+1} generated {len(segments)} potential segments")
+                            
+                            # Enhanced duplicate detection and processing
+                            unique_segments = []
+                            processed_segments = 0
+                            
+                            for segment in segments:
+                                # Check if segment is too small or empty
+                                if segment.size[0] > 100 and segment.size[1] > 100:
+                                    # Convert to bytes for comparison
+                                    segment_bytes = io.BytesIO()
+                                    segment.save(segment_bytes, format='PNG')
+                                    segment_data = segment_bytes.getvalue()
+                                    
+                                    # Enhanced duplicate detection with similarity threshold
+                                    is_duplicate = False
+                                    for existing in unique_segments:
+                                        if _segment_similarity(segment_data, existing):
+                                            is_duplicate = True
+                                            break
+                                    
+                                    if not is_duplicate:
+                                        unique_segments.append(segment_data)
+                                        processed_segments += 1
+                            
+                            print(f"Page {i+1} has {processed_segments} unique segments to process")
+                            
+                            # Process each unique segment with enhanced error handling
+                            for j, segment_data in enumerate(unique_segments):
+                                segment_img = Image.open(io.BytesIO(segment_data))
+                                segment_path = os.path.join(target_folder, f"{os.path.splitext(file.filename)[0]}_page{i+1}_segment{j+1}.png")
+                                segment_img.save(segment_path)
+                                
+                                if is_blank_or_crossed_out(segment_path):
+                                    print(f"Skipped blank/crossed-out segment: {segment_path}")
+                                    continue
+                                
+                                # Use Gemini to extract details with dual approach (both pure and mapped)
+                                print(f"Processing segment {j+1}/{len(unique_segments)} from page {i+1}")
+                                try:
+                                    gemini_output = gemini_extract_file_details(segment_path, form_type=form_type)
+                                    if gemini_output:
+                                        print(f"--- Gemini Output for segment {j+1} ---")
+                                        print(gemini_output[:500] + "..." if len(gemini_output) > 500 else gemini_output)
+                                        print("--- END Gemini Output ---")
+                                        
+                                        forms_data, raw_gemini_json = process_gemini_extraction_dual(gemini_output, form_type=form_type)
+                                        print(f"Extracted {len(forms_data)} forms from segment {j+1}")
+                                    else:
+                                        print(f"No Gemini output for segment {j+1} - skipping")
+                                        forms_data, raw_gemini_json = [], ''
+                                        continue
+                                except Exception as e:
+                                    print(f"Error processing segment {j+1}: {e}")
+                                    forms_data, raw_gemini_json = [], ''
+                                    continue
+                                
+                                # Process each form from the response with deduplication
                                 for form_data, rows, individual_json in forms_data:
                                     # Use the individual_json for the raw_gemini_json
                                     form_data['raw_gemini_json'] = individual_json
                                     # --- PATCH: Set file_name using flexible lookup for both mapped and pure extraction modes ---
-                                    form_data['file_name'] = get_flexible_file_name(form_data, raw_gemini_json, os.path.basename(img_path))
+                                    form_data['file_name'] = get_flexible_file_name(form_data, raw_gemini_json, os.path.basename(segment_path))
                                     if form_data:
-                                        required_form_fields = [
-                                            'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
-                                            'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
-                                            'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
-                                        ]
+                                        # For Pure Extraction mode, be more lenient with required fields
+                                        if PURE_GEMINI_EXTRACTION:
+                                            required_form_fields = [
+                                                'status', 'file_name'  # Only absolutely essential fields
+                                            ]
+                                        else:
+                                            required_form_fields = [
+                                                'pass_number', 'title', 'employee_name', 'rdos', 'actual_ot_date', 'div',
+                                                'comments', 'supervisor_name', 'supervisor_pass_no', 'oto', 'oto_amount_saved',
+                                                'entered_in_uts', 'regular_assignment', 'report', 'relief', 'todays_date', 'status', 'file_name'
+                                            ]
                                         for key in required_form_fields:
                                             if key not in form_data:
                                                 form_data[key] = 'N/A'
                                         form_data['status'] = 'processed'
+                                        
+                                        # Check for duplicates based on overtime hours and date
+                                        # SKIP duplicate detection for Pure Extraction mode - we want everything!
+                                        if not PURE_GEMINI_EXTRACTION and is_duplicate_form(form_data, form_type):
+                                            print(f"Skipping duplicate form: {form_data.get('employee_name', 'Unknown')} - {form_data.get('overtime_hours', 'Unknown hours')} on {form_data.get('date_of_overtime', 'Unknown date')}")
+                                            continue
+                                        
                                     else:
                                         form_data = {key: '' for key in required_form_fields}
                                         form_data['file_name'] = os.path.basename(img_path)
@@ -795,12 +1391,69 @@ def handle_upload(form_type):
                                     if not form_id:
                                         failed += 1
                                         continue
-                                    log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
+                                    # Safely get pass_number for audit log
+                                    pass_number = 'N/A'
+                                    if isinstance(form_data, dict):
+                                        pass_number = form_data.get('pass_number', 'N/A')
+                                    log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {pass_number}")
                                     success += 1
                     continue  # Skip the rest of the loop for supervisor PDFs
 
-                # Default: process as a single file (for hourly or non-PDF supervisor uploads)
-                gemini_output = gemini_extract_file_details(filepath)
+                # Enhanced processing for hourly forms to extract maximum overtime slips
+                if form_type == 'hourly':
+                    # Try to detect multiple forms in the document first
+                    multiple_forms = detect_multiple_forms_in_document(filepath, form_type)
+                    
+                    if multiple_forms:
+                        print(f"Detected {len(multiple_forms)} potential form regions in hourly document")
+                        # Process each detected region
+                        all_forms_data = []
+                        for i, segment in enumerate(multiple_forms):
+                            segment_path = os.path.join(target_folder, f"{os.path.splitext(file.filename)[0]}_segment{i+1}.png")
+                            segment.save(segment_path)
+                            
+                            if is_blank_or_crossed_out(segment_path):
+                                print(f"Skipped blank segment {i+1}")
+                                continue
+                            
+                            # Extract from this segment
+                            segment_output = gemini_extract_file_details(segment_path, form_type=form_type)
+                            if segment_output:
+                                segment_forms, _ = process_gemini_extraction_dual(segment_output, form_type=form_type)
+                                all_forms_data.extend(segment_forms)
+                        
+                        # Combine all extracted forms
+                        if all_forms_data:
+                            gemini_output = json.dumps({"entries": [form[0] for form in all_forms_data]})
+                            print(f"Successfully extracted {len(all_forms_data)} forms from multiple regions")
+                        else:
+                            gemini_output = None
+                    else:
+                        # Standard extraction with enhanced prompts
+                        gemini_output = gemini_extract_file_details(filepath, form_type=form_type)
+                        
+                        # If no multiple entries found, try with enhanced prompt
+                        if gemini_output and 'entries' not in gemini_output:
+                            enhanced_prompt = """This is an hourly employee overtime form. Look VERY carefully for multiple overtime entries.
+                            
+                            CRITICAL: These forms often contain multiple overtime slips for the same employee on different dates or times.
+                            Look for:
+                            - Multiple date entries
+                            - Multiple time ranges
+                            - Multiple exception codes
+                            - Multiple line locations or run numbers
+                            - Any repeated patterns that suggest multiple overtime entries
+                            
+                            If you find ANY indication of multiple overtime entries, structure them in an 'entries' array.
+                            Be extremely thorough - these forms are designed to capture multiple overtime instances."""
+                            
+                            enhanced_output = gemini_extract_file_details(filepath, enhanced_prompt, form_type=form_type)
+                            if enhanced_output and 'entries' in enhanced_output:
+                                gemini_output = enhanced_output
+                                print("Enhanced extraction found multiple overtime entries!")
+                else:
+                    # Default: process as a single file (for non-PDF supervisor uploads)
+                    gemini_output = gemini_extract_file_details(filepath, form_type=form_type)
                 print("--- Gemini Output ---")
                 print(gemini_output)
                 print("--- END Gemini Output ---")
@@ -830,14 +1483,28 @@ def handle_upload(form_type):
                         if not rows:
                             rows = []
                     upload_date = datetime.datetime.now().isoformat()
+                    print(f"DEBUG: About to store form. form_data type: {type(form_data)}, rows type: {type(rows)}")
+                    print(f"DEBUG: form_data keys: {list(form_data.keys()) if isinstance(form_data, dict) else 'Not a dict'}")
+                    print(f"DEBUG: rows content: {rows}")
                     form_id = store_exception_form(form_data, rows, username, form_type=form_type, upload_date=upload_date)
                     if not form_id:
                         failed += 1
                         continue
-                    log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {form_data.get('pass_number', 'N/A')}")
+                    # Safely get pass_number for audit log
+                    pass_number = 'N/A'
+                    if isinstance(form_data, dict):
+                        pass_number = form_data.get('pass_number', 'N/A')
+                    log_audit(username, 'upload', 'form', form_id, f"Form uploaded: {pass_number}")
                     success += 1
             except Exception as e:
                 print(f"Error processing file {file.filename}: {e}")
+                print(f"DEBUG: Exception details - form_data type: {type(form_data) if 'form_data' in locals() else 'Not defined'}")
+                print(f"DEBUG: Exception details - rows type: {type(rows) if 'rows' in locals() else 'Not defined'}")
+                print(f"DEBUG: Exception details - username: {username}")
+                print(f"DEBUG: Exception details - form_data content: {form_data if 'form_data' in locals() else 'Not defined'}")
+                print(f"DEBUG: Exception details - rows content: {rows if 'rows' in locals() else 'Not defined'}")
+                import traceback
+                print(f"DEBUG: Full traceback: {traceback.format_exc()}")
                 failed += 1
         return jsonify({'message': 'Batch upload complete', 'success': success, 'failed': failed})
     except Exception as e:
@@ -1758,6 +2425,10 @@ def extraction_mode():
 def export_forms():
     import sqlite3
     import json
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
     
     # Get query parameters
     form_type = request.args.get('form_type')
@@ -1775,8 +2446,16 @@ def export_forms():
             params.append(form_type)
         
         if extraction_mode:
-            query += " AND extraction_mode = ?"
-            params.append(extraction_mode)
+            # Handle combined extraction mode - when user wants 'mapped', also include 'combined' forms
+            if extraction_mode == 'mapped':
+                query += " AND (extraction_mode = ? OR extraction_mode = 'combined')"
+                params.append(extraction_mode)
+            elif extraction_mode == 'pure':
+                query += " AND (extraction_mode = ? OR extraction_mode = 'combined')"
+                params.append(extraction_mode)
+            else:
+                query += " AND extraction_mode = ?"
+                params.append(extraction_mode)
         
         c.execute(query, params)
         rows = c.fetchall()
@@ -1784,7 +2463,7 @@ def export_forms():
         # Get column names
         columns = [desc[0] for desc in c.description]
         
-        # Human-friendly headers
+        # Enhanced headers focusing on overtime data
         header_map = {
             'id': 'Form ID',
             'pass_number': 'Pass Number',
@@ -1810,35 +2489,190 @@ def export_forms():
             'upload_date': 'Upload Date'
         }
         
-        headers = [header_map.get(col, col) for col in columns]
+        # Create enhanced headers with overtime focus
+        enhanced_headers = []
+        enhanced_columns = []
+        
+        # First: Essential overtime fields
+        overtime_fields = [
+            'id', 'pass_number', 'employee_name', 'actual_ot_date', 'form_type',
+            'overtime_hours', 'report_loc', 'overtime_location', 'report_time', 'relief_time',
+            'date_of_overtime', 'job_number', 'rc_number', 'acct_number', 'amount'
+        ]
+        
+        # Add overtime fields first (if they exist in the database)
+        for field in overtime_fields:
+            if field in columns:
+                enhanced_columns.append(field)
+                enhanced_headers.append(header_map.get(field, field.replace('_', ' ').title()))
+        
+        # Then: Other important fields
+        other_fields = [
+            'title', 'rdos', 'div', 'comments', 'supervisor_name', 'supervisor_pass_no',
+            'oto', 'oto_amount_saved', 'entered_in_uts', 'regular_assignment', 'report', 'relief',
+            'todays_date', 'extraction_mode', 'upload_date'
+        ]
+        
+        for field in other_fields:
+            if field in columns and field not in enhanced_columns:
+                enhanced_columns.append(field)
+                enhanced_headers.append(header_map.get(field, field.replace('_', ' ').title()))
+        
+        # Finally: Raw data fields for debugging
+        raw_fields = ['raw_extracted_data', 'raw_gemini_json']
+        for field in raw_fields:
+            if field in columns:
+                enhanced_columns.append(field)
+                enhanced_headers.append(header_map.get(field, field.replace('_', ' ').title()))
         
         conn.commit()
     
-    def stream():
-        yield ','.join(headers) + '\n'
-        for row in rows:
-            # Process each cell, handling JSON data specially
-            processed_row = []
-            for i, item in enumerate(row):
+    # Create a new Excel workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Exception Forms"
+    
+    # Style definitions
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    # Add headers with styling
+    for col_num, header in enumerate(enhanced_headers, 1):
+        cell = ws.cell(row=1, column=col_num, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    # Add data rows with overtime details
+    current_row = 2
+    for form_row in rows:
+            # Create a mapping of column names to values
+            form_data = dict(zip(columns, form_row))
+            
+            # Add main form data
+            for col_num, col_name in enumerate(enhanced_columns, 1):
+                item = form_data.get(col_name)
                 if item is None:
-                    processed_row.append('')
-                elif columns[i] in ['raw_extracted_data', 'raw_gemini_json'] and item:
+                    cell_value = ''
+                elif col_name in ['raw_extracted_data', 'raw_gemini_json'] and item:
                     # Format JSON data for Excel readability
                     try:
                         parsed_json = json.loads(item)
                         formatted_json = json.dumps(parsed_json, indent=2)
-                        # Escape quotes and newlines for CSV
-                        formatted_json = formatted_json.replace('"', '""').replace('\n', ' ')
-                        processed_row.append(f'"{formatted_json}"')
+                        cell_value = formatted_json
                     except:
-                        escaped_item = str(item).replace('"', '""')
-                        processed_row.append(f'"{escaped_item}"')
+                        cell_value = str(item)
                 else:
-                    # Escape quotes for CSV
-                    cell_value = str(item).replace('"', '""')
-                    processed_row.append(f'"{cell_value}"')
+                    cell_value = str(item) if item is not None else ''
+                
+                ws.cell(row=current_row, column=col_num, value=cell_value)
             
-            yield ','.join(processed_row) + '\n'
+            # Now add detailed overtime row data (what you specifically want to see)
+            form_id = form_data.get('id')
+            if form_id:
+                # Get overtime rows for this form
+                c.execute('SELECT * FROM exception_form_rows WHERE form_id = ?', (form_id,))
+                overtime_rows = c.fetchall()
+                
+                if overtime_rows:
+                    # Get overtime row column names
+                    overtime_columns = [desc[0] for desc in c.description]
+                    
+                    # Add overtime row headers if this is the first form with overtime data
+                    if current_row == 2:
+                        overtime_header_start = len(enhanced_columns) + 1
+                        overtime_headers = [
+                            'OT Row ID', 'Exception Code', 'Code Description', 'Line/Location', 'Run No.',
+                            'Exception Time From (HH:MM)', 'Exception Time To (HH:MM)',
+                            'Overtime Hours (HH:MM)', 'Bonus Hours (HH:MM)', 'Night Differential (HH:MM)',
+                            'TA Job No.'
+                        ]
+                        
+                        for col_num, header in enumerate(overtime_headers, overtime_header_start):
+                            cell = ws.cell(row=1, column=col_num, value=header)
+                            cell.font = header_font
+                            cell.fill = header_fill
+                            cell.alignment = header_alignment
+                    
+                    # Add overtime row data
+                    for overtime_row in overtime_rows:
+                        overtime_data = dict(zip(overtime_columns, overtime_row))
+                        
+                        # Add overtime row data starting after the main form data
+                        col_offset = len(enhanced_columns)
+                        
+                        # OT Row ID
+                        ws.cell(row=current_row, column=col_offset + 1, value=overtime_data.get('id', ''))
+                        
+                        # Exception Code
+                        ws.cell(row=current_row, column=col_offset + 2, value=overtime_data.get('code', ''))
+                        
+                        # Code Description (REASON for overtime)
+                        ws.cell(row=current_row, column=col_offset + 3, value=overtime_data.get('code_description', ''))
+                        
+                        # Line/Location
+                        ws.cell(row=current_row, column=col_offset + 4, value=overtime_data.get('line_location', ''))
+                        
+                        # Run No.
+                        ws.cell(row=current_row, column=col_offset + 5, value=overtime_data.get('run_no', ''))
+                        
+                        # Exception Time From (HH:MM) - START TIME
+                        time_from_hh = overtime_data.get('exception_time_from_hh', '')
+                        time_from_mm = overtime_data.get('exception_time_from_mm', '')
+                        time_from = f"{time_from_hh}:{time_from_mm}" if time_from_hh and time_from_mm else ''
+                        ws.cell(row=current_row, column=col_offset + 6, value=time_from)
+                        
+                        # Exception Time To (HH:MM) - END TIME
+                        time_to_hh = overtime_data.get('exception_time_to_hh', '')
+                        time_to_mm = overtime_data.get('exception_time_to_mm', '')
+                        time_to = f"{time_to_hh}:{time_to_mm}" if time_to_hh and time_to_mm else ''
+                        ws.cell(row=current_row, column=col_offset + 7, value=time_to)
+                        
+                        # Overtime Hours (HH:MM) - DURATION
+                        ot_hh = overtime_data.get('overtime_hh', '')
+                        ot_mm = overtime_data.get('overtime_mm', '')
+                        overtime_hours = f"{ot_hh}:{ot_mm}" if ot_hh and ot_mm else ''
+                        ws.cell(row=current_row, column=col_offset + 8, value=overtime_hours)
+                        
+                        # Bonus Hours (HH:MM)
+                        bonus_hh = overtime_data.get('bonus_hh', '')
+                        bonus_mm = overtime_data.get('bonus_mm', '')
+                        bonus_hours = f"{bonus_hh}:{bonus_mm}" if bonus_hh and bonus_mm else ''
+                        ws.cell(row=current_row, column=col_offset + 9, value=bonus_hours)
+                        
+                        # Night Differential (HH:MM)
+                        nite_hh = overtime_data.get('nite_diff_hh', '')
+                        nite_mm = overtime_data.get('nite_diff_mm', '')
+                        nite_diff = f"{nite_hh}:{nite_mm}" if nite_hh and nite_mm else ''
+                        ws.cell(row=current_row, column=col_offset + 10, value=nite_diff)
+                        
+                        # TA Job No.
+                        ws.cell(row=current_row, column=col_offset + 11, value=overtime_data.get('ta_job_no', ''))
+                        
+                        current_row += 1
+                else:
+                    current_row += 1
+            else:
+                current_row += 1
+    
+    # Auto-adjust column widths
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+        ws.column_dimensions[column_letter].width = adjusted_width
+    
+    # Save to bytes buffer
+    excel_buffer = io.BytesIO()
+    wb.save(excel_buffer)
+    excel_buffer.seek(0)
     
     # Generate filename based on filters
     filename_parts = ['exception_forms']
@@ -1846,11 +2680,16 @@ def export_forms():
         filename_parts.append(form_type)
     if extraction_mode:
         filename_parts.append(extraction_mode)
-    filename = '_'.join(filename_parts) + '.csv'
+    filename = '_'.join(filename_parts) + '.xlsx'
     
-    return Response(stream(), mimetype='text/csv', headers={
-        'Content-Disposition': f'attachment; filename={filename}'
-    })
+    return Response(
+        excel_buffer.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={
+            'Content-Disposition': f'attachment; filename={filename}',
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+    )
 
 if __name__ == "__main__":
     init_audit_db()

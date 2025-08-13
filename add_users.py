@@ -14,22 +14,50 @@ users = [
     # add more users here
 ]
 
-def export_users_to_csv(users, filename='user_logins_backup.csv'):
-    import csv
+def export_users_to_excel(users, filename='user_logins_backup.xlsx'):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
     from werkzeug.security import generate_password_hash
     try:
-        with open(filename, 'w', newline='') as csvfile:
-            fieldnames = ['username', 'password_hash']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            for user in users:
-                writer.writerow({
-                    'username': user['username'],
-                    'password_hash': generate_password_hash(user['password'], method='pbkdf2:sha256')
-                })
+        # Create a new Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "User Logins"
+        
+        # Style definitions
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Add headers with styling
+        headers = ['Username', 'Password Hash']
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+        
+        # Add data rows
+        for row_num, user in enumerate(users, 2):
+            ws.cell(row=row_num, column=1, value=user['username'])
+            ws.cell(row=row_num, column=2, value=generate_password_hash(user['password'], method='pbkdf2:sha256'))
+        
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column[0].column_letter].width = adjusted_width
+        
+        wb.save(filename)
         logging.info(f'User login info exported to {filename}')
     except Exception as e:
-        logging.error(f'Failed to export users to CSV: {e}')
+        logging.error(f'Failed to export users to Excel: {e}')
 
 added_count = 0
 exists_count = 0
@@ -49,7 +77,7 @@ logging.info(f'Total users processed: {len(users)}')
 logging.info(f'Users added: {added_count}')
 logging.info(f'Users already existed: {exists_count}')
 
-export_users_to_csv(users)
+export_users_to_excel(users)
 
 # Debug script: Print all forms in the exception_forms table
 with sqlite3.connect('forms.db', timeout=10) as conn:

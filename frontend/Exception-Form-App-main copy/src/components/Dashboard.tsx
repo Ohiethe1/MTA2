@@ -1,46 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 // import { useAuth } from '../contexts/AuthContext';
 
-interface FormData {
-  id: string;
-  fileName: string;
-  uploadDate: string;
-  status: 'pending' | 'processed' | 'error';
-  extractedData?: any;
-  // Add all the Exception Claim Form fields
-  passNumber?: string;
-  title?: string;
-  employeeName?: string;
-  rdos?: string;
-  actualOTDate?: string;
-  div?: string;
-  exceptionCode?: string;
-  location?: string;
-  runNo?: string;
-  exceptionTimeFromHH?: string;
-  exceptionTimeFromMM?: string;
-  exceptionTimeToHH?: string;
-  exceptionTimeToMM?: string;
-  overtimeHH?: string;
-  overtimeMM?: string;
-  bonusHH?: string;
-  bonusMM?: string;
-  niteDiffHH?: string;
-  niteDiffMM?: string;
-  taJobNo?: string;
-  oto?: string;
-  otoAmountSaved?: string;
-  enteredInUTS?: string;
-  comments?: string;
-  supervisorName?: string;
-  supervisorPassNo?: string;
-  regular_assignment?: string;
-  report?: string;
-  relief?: string;
-  todays_date?: string;
-  report_loc?: string;
-}
+
 
 interface DashboardProps {
   filterType?: 'hourly' | 'supervisor';
@@ -67,7 +28,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   const [detailsError, setDetailsError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
+
   const [editForm, setEditForm] = useState<any>(null);
   const [editRows, setEditRows] = useState<any[]>([]);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -126,11 +87,45 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
         setDashboard(data);
         setLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         setError('Failed to load dashboard data.');
         setLoading(false);
       });
-  }, [filterType, extractionMode]);
+  }, [filterType]); // ✅ Removed extractionMode from dependencies
+
+  // Separate useEffect to reload dashboard when extraction mode changes
+  useEffect(() => {
+    if (extractionMode && dashboard) {
+      // Reload dashboard data with new extraction mode
+      setLoading(true);
+      let url = 'http://localhost:8000/api/dashboard';
+      const params = new URLSearchParams();
+      
+      if (filterType === 'hourly') {
+        params.append('form_type', 'hourly');
+      } else if (filterType === 'supervisor') {
+        params.append('form_type', 'supervisor');
+      }
+      
+      // Add extraction mode filter
+      params.append('extraction_mode', extractionMode);
+      
+      if (params.toString()) {
+        url += '?' + params.toString();
+      }
+      
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          setDashboard(data);
+          setLoading(false);
+        })
+        .catch(() => {
+          setError('Failed to reload dashboard data.');
+          setLoading(false);
+        });
+    }
+  }, [extractionMode, filterType]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -145,38 +140,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
     }
   };
 
-  // Helper to format date
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
-  // Helper to prettify field names
-  const prettyField = (key: string) => {
-    const map: Record<string, string> = {
-      pass_number: 'Pass Number',
-      title: 'Title',
-      employee_name: 'Employee Name',
-      rdos: 'RDOS',
-      actual_ot_date: 'Actual OT Date',
-      div: 'DIV',
-      comments: 'Comments',
-      supervisor_name: 'Supervisor Name',
-      supervisor_pass_no: 'Supervisor Pass No.',
-      oto: 'OTO',
-      oto_amount_saved: 'OTO Amount Saved',
-      entered_in_uts: 'Entered in UTS',
-      id: 'Form ID',
-    };
-    return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  };
 
   // Helper to format upload date
   const formatUploadDate = (dateString: string) => {
@@ -203,44 +167,29 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
     return timeString; // Return original if not 4 digits
   };
 
-  const handleViewForm = (form: FormData) => {
-    // setSelectedForm(form); // This state is removed
-    // setShowModal(true); // This state is removed
-  };
 
-  const closeModal = () => {
-    // setShowModal(false); // This state is removed
-    // setSelectedForm(null); // This state is removed
-  };
 
   const handleViewDetails = async (formId: number) => {
-    console.log('handleViewDetails called with formId:', formId, 'extractionMode:', extractionMode);
     setDetailsLoading(true);
     setDetailsError('');
     setSelectedFormDetails(null);
     try {
       const response = await fetch(`http://localhost:8000/api/form/${formId}?extraction_mode=${extractionMode}`);
       const data = await response.json();
-      console.log('Response status:', response.status, 'Data:', data);
       if (response.ok) {
-        console.log('Setting selectedFormDetails with data:', data);
         setSelectedFormDetails(data);
       } else if (response.status === 404 && extractionMode === 'pure') {
-        console.log('404 for pure mode, trying fallback to mapped');
         // For pure extraction mode, if form not found, try to get the mapped version to show raw data
         const fallbackResponse = await fetch(`http://localhost:8000/api/form/${formId}?extraction_mode=mapped`);
         const fallbackData = await fallbackResponse.json();
-        console.log('Fallback response status:', fallbackResponse.status, 'Fallback data:', fallbackData);
                   if (fallbackResponse.ok) {
             if (fallbackData.form.raw_extracted_data) {
-              console.log('Setting fallback data with raw_extracted_data');
               // Show the mapped form but indicate it's showing raw data from mapped version
               setSelectedFormDetails({
                 ...fallbackData,
                 isFallbackToMapped: true
               });
             } else {
-              console.log('No raw_extracted_data available');
               // Set the form details so the modal opens, but with an error message
               setSelectedFormDetails({
                 ...fallbackData,
@@ -249,15 +198,12 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
               });
             }
           } else {
-            console.log('Fallback also failed');
             setDetailsError('No pure extraction data available for this form. This form was processed before dual extraction was implemented.');
           }
       } else {
-        console.log('Other error:', data.error);
         setDetailsError(data.error || 'Failed to load form details.');
       }
     } catch (err) {
-      console.log('Network error:', err);
       setDetailsError('Network or server error.');
     }
     setDetailsLoading(false);
@@ -326,7 +272,6 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
   };
 
   const handleEditRawJson = () => {
-    console.log('Edit Raw JSON button clicked');
     // For pure extraction mode, use raw_extracted_data; for mapped mode, use raw_gemini_json
     const rawDataField = extractionMode === 'pure' ? 'raw_extracted_data' : 'raw_gemini_json';
     if (selectedFormDetails?.form?.[rawDataField]) {
@@ -615,7 +560,6 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
 
   // Remove getFilteredProcessedForms and use filteredForms for table only
   // The summary cards use backend stats directly
-  const hasStats = filteredForms.length > 0;
 
   if (loading) {
     return (
@@ -973,12 +917,12 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
             <button
               onClick={handleExport}
               className="bg-gradient-to-r from-blue-500 to-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition-colors relative group text-sm"
-              title={filterType ? `Download a CSV of all ${filterType} forms` : "Download a CSV of all forms in the system"}
+              title={filterType ? `Download an Excel file of all ${filterType} forms` : "Download an Excel file of all forms in the system"}
             >
               <svg className="w-4 h-4 inline-block mr-2 -mt-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" /></svg>
-              {filterType ? `Export ${filterType.charAt(0).toUpperCase() + filterType.slice(1)} Forms (CSV)` : 'Export All Forms (CSV)'}
+              {filterType ? `Export ${filterType.charAt(0).toUpperCase() + filterType.slice(1)} Forms (Excel)` : 'Export All Forms (Excel)'}
               <span className="absolute left-1/2 -bottom-7 -translate-x-1/2 bg-gray-800 text-xs text-white rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                {filterType ? `Exports all ${filterType} forms` : "Exports all forms, not just filtered results"}
+                {filterType ? `Exports all ${filterType} forms to Excel` : "Exports all forms to Excel, not just filtered results"}
               </span>
             </button>
           </div>
@@ -1162,7 +1106,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
       </div>
 
       {/* Details Modal */}
-      {console.log('Rendering modal, selectedFormDetails:', selectedFormDetails)}
+      
       {selectedFormDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -1190,7 +1134,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                 <>
 
                   {/* Hourly Exception Form Details (View Mode) */}
-                  {(filterType === 'hourly' || (!filterType && selectedFormDetails?.form?.form_type !== 'supervisor')) && !isEditing && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
+                  {(filterType === 'hourly' || (!filterType && selectedFormDetails?.form?.form_type !== 'supervisor')) && selectedFormDetails && selectedFormDetails.form && extractionMode !== 'pure' && (
                     <div className="mb-4">
                       <div className="flex justify-between items-center mb-4">
                         <h4 className="font-semibold text-gray-800 text-lg border-b pb-2">Hourly Exception Claim Form Info</h4>
@@ -1243,7 +1187,7 @@ const Dashboard: React.FC<DashboardProps> = ({ filterType, heading }) => {
                     </div>
                   )}
                   {/* Pure Extraction Mode - Show Raw Data */}
-                  {console.log('Pure extraction section, extractionMode:', extractionMode, 'raw_extracted_data:', selectedFormDetails?.form?.raw_extracted_data)}
+                  
                   {extractionMode === 'pure' && selectedFormDetails?.form && (
                     <div className="mb-6">
                       {selectedFormDetails.form.raw_extracted_data ? (

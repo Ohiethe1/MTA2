@@ -420,6 +420,8 @@ def parse_exception_form(ocr_lines):
 # (Removed example usage block that called parse_exception_form and store_exception_form)
 
 def store_exception_form(form_data, rows, username, form_type=None, upload_date=None):
+    print(f"DEBUG: store_exception_form called with form_data type: {type(form_data)}, rows type: {type(rows)}")
+    print(f"DEBUG: rows content: {rows}")
     import sqlite3
     with sqlite3.connect('forms.db', timeout=10) as conn:
         c = conn.cursor()
@@ -493,6 +495,10 @@ def store_exception_form(form_data, rows, username, form_type=None, upload_date=
             'nite_diff_hh', 'nite_diff_mm', 'ta_job_no'
         ]
         for row in rows:
+            # Safety check: ensure row is a dictionary
+            if not isinstance(row, dict):
+                print(f"WARNING: row is not a dictionary, type: {type(row)}, content: {row}")
+                continue
             insert_row_fields = [f for f in row_fields if f == 'form_id' or f in row]
             insert_row_values = [form_id if f == 'form_id' else row.get(f, '') for f in insert_row_fields]
             row_placeholders = ', '.join(['?'] * len(insert_row_fields))
