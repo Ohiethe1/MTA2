@@ -200,15 +200,36 @@ def gemini_extract_file_details(file_path, prompt=None, form_type=None):
             
             Return as structured JSON with all fields populated."""
     
-    sample_file = genai.upload_file(path=file_path, display_name=os.path.basename(file_path))
-    print(f"Uploaded file '{sample_file.display_name}' as: {sample_file.uri}")
+        # Enhanced error handling and retry logic for L Line forms
+    max_retries = 3
+    retry_delay = 2  # seconds
     
-    # Use more detailed prompt for better extraction
-    enhanced_prompt = f"{prompt}\n\nIMPORTANT: This form may contain multiple overtime entries. Extract EVERY single overtime slip you can identify. Look for patterns, repeated sections, or multiple employee entries. If you find multiple overtime slips, structure them in an 'entries' array."
-    
-    response = gemini_model.generate_content([sample_file, enhanced_prompt])
-    print("Gemini extraction response:", response.text)
-    return response.text
+    for attempt in range(max_retries):
+        try:
+            sample_file = genai.upload_file(path=file_path, display_name=os.path.basename(file_path))
+            print(f"Uploaded file '{sample_file.display_name}' as: {sample_file.uri}")
+            
+            # Use more detailed prompt for better extraction
+            # Enhanced prompt specifically for L Line forms
+            if "L Line" in file_path or "L-213" in file_path or "L-313" in file_path:
+                enhanced_prompt = f"{prompt}\n\nL LINE SPECIFIC INSTRUCTIONS:\nThis is an L Line overtime form that contains MULTIPLE overtime slips for MULTIPLE employees. Look for:\n- Different pass numbers and employee names\n- Multiple job assignments (L-213, L-313, etc.)\n- Various RC numbers and locations\n- Multiple overtime entries with different hours and reasons\n\nExtract EVERY single overtime slip you can identify. Structure multiple forms in an 'entries' array. Be extremely thorough - the L Line PDF contains dozens of overtime slips."
+            else:
+                enhanced_prompt = f"{prompt}\n\nIMPORTANT: This form may contain multiple overtime entries. Extract EVERY single overtime slip you can identify. Look for patterns, repeated sections, or multiple employee entries. If you find multiple overtime slips, structure them in an 'entries' array."
+            
+            response = gemini_model.generate_content([sample_file, enhanced_prompt])
+            print("Gemini extraction response:", response.text)
+            return response.text
+            
+        except Exception as e:
+            print(f"Gemini API call attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {retry_delay} seconds...")
+                import time
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                print(f"All {max_retries} attempts failed. Returning None.")
+                return None
 
 # Utility to clean and map Gemini output
 
@@ -504,7 +525,44 @@ def process_single_form(data, form_type=None):
         "exception_code", "line_location", "run_no", "exception_time_from_hh", "exception_time_from_mm", "exception_time_to_hh", "exception_time_to_mm",
         "overtime_hh", "overtime_mm", "ta_job_no", "comments", "oto", "oto_amount_saved_hh", "oto_amount_saved_mm", "entered_in_uts_yes", "entered_in_uts_no", "supervisor_name", "supervisor_pass_no"
     ]
-    # Map normalized Gemini keys to our slots
+    # Enhanced mapping for L Line forms - handle all Gemini field variations
+    enhanced_mapping = {
+        # Employee identification - multiple variations
+        'employee_name': ['employee_name', 'name', 'employee', 'employee name', 'EMPLOYEE NAME'],
+        'pass_number': ['pass_number', 'pass', 'PASS', 'assignment', 'reg', 'pass no', 'passnumber', 'pass number'],
+        'title': ['title', 'TITLE', 'position', 'job_title', 'role', 'job title', 'employee_title'],
+        
+        # Job and location fields
+        'job_number': ['job_number', 'job', 'JOB #', 'job no', 'job_no', 'job#', 'job number', 'ta_job_no', 'ta job no'],
+        'rc_number': ['rc_number', 'rc', 'RC#', 'rc#', 'rc no', 'rc_no', 'rc number'],
+        'report_loc': ['report_loc', 'report location', 'REPORT LOC.', 'location', 'reportloc', 'report', 'loc'],
+        'overtime_location': ['overtime_location', 'overtime location', 'OVERTIME LOCATION', 'ot_location', 'otloc', 'ot location'],
+        
+        # Time fields
+        'report_time': ['report_time', 'report time', 'REPORT TIME', 'report-time', 'report.time', 'reporttime'],
+        'relief_time': ['relief_time', 'relief time', 'RELIEF TIME', 'relief-time', 'relief.time', 'relieftime'],
+        'overtime_hours': ['overtime_hours', 'overtime hours', 'OVERTIME HOURS', 'overtime', 'hours', 'ot_hours', 'ot', 'total_overtime'],
+        
+        # Date fields
+        'date_of_overtime': ['date_of_overtime', 'date of overtime', 'date', 'DATE', 's_m', 'W/T', 'w_t'],
+        'rdos': ['rdos', 'rdo', 'S/M', 'rdo\'s', 'rduos', 'sm'],
+        
+        # Account fields
+        'acct_number': ['acct_number', 'acct', 'ACCT #', 'acct#', 'acct no', 'acct_no', 'acct number', 'account_number', 'account number'],
+        'amount': ['amount'],
+        
+        # Reason fields
+        'reason_rdo': ['reason_rdo', 'rdo', 'RDO'],
+        'reason_absentee_coverage': ['reason_absentee_coverage', 'absentee_coverage', 'absenteeCoverage', 'absentee coverage', 'Absentee Coverage'],
+        'reason_no_lunch': ['reason_no_lunch', 'no_lunch', 'noLunch', 'no lunch', 'NO LUNCH'],
+        'reason_early_report': ['reason_early_report', 'early_report', 'earlyReport', 'early report'],
+        'reason_late_clear': ['reason_late_clear', 'late_clear', 'lateClear', 'late clear'],
+        'reason_save_as_oto': ['reason_save_as_oto', 'save_as_oto', 'saveAsOto', 'save as oto'],
+        'reason_capital_support_go': ['reason_capital_support_go', 'capital_support_go', 'capitalSupportGo', 'capital support go'],
+        'reason_other': ['reason_other', 'other', 'OTHER', 'other_reason']
+    }
+    
+    # Legacy key_map for backward compatibility
     key_map = {
         # Supervisor/Overtime fields (expanded variants for all possible Gemini outputs)
         "reg": "reg",
@@ -699,52 +757,63 @@ def process_single_form(data, form_type=None):
         return dict(items)
     flat_data = flatten(data)
     print("FLATTENED GEMINI DATA:", flat_data)
-    # Map fields
+    # Enhanced field mapping using the comprehensive mapping dictionary
     for k, v in flat_data.items():
         norm_k = normalize_key(k)
         print(f"Mapping: '{k}' -> '{norm_k}' = '{v}'")
         
-        # Handle nested employee data first
-        if k == "employee_pass_number" or k == "employee_pass":
-            form_data["pass_number"] = v
-        elif k == "employee_name" or k == "employee_name":
-            form_data["employee_name"] = v
-        elif k == "employee_title" or k == "employee_title":
-            form_data["title"] = v
-        elif k == "employee_rdoe" or k == "employee_rdo":
-            form_data["rdos"] = v
-        elif k == "employee_rc_number" or k == "employee_rc":
-            form_data["rc_number"] = v
+        # Use enhanced mapping first
+        mapped = False
+        for target_field, source_variants in enhanced_mapping.items():
+            if k in source_variants or norm_k in [normalize_key(variant) for variant in source_variants]:
+                form_data[target_field] = v
+                print(f"  Enhanced mapping: '{k}' -> '{target_field}' = '{v}'")
+                mapped = True
+                break
         
-        # Handle direct field mappings for merged data
-        elif k == "name":
-            form_data["employee_name"] = v
-        elif k == "rduos" or k == "rdo":
-            form_data["rdos"] = v
-        
-        # Handle new camelCase field names
-        elif k == "employeeName":
-            form_data["employee_name"] = v
-        elif k == "passNumber":
-            form_data["pass_number"] = v
-        elif k == "rDOs":
-            form_data["rdos"] = v
-        elif k == "rcNumber":
-            form_data["rc_number"] = v
-        elif k == "jobNumber":
-            form_data["job_number"] = v
-        elif k == "overtimeLocation":
-            form_data["overtime_location"] = v
-        elif k == "reportTime":
-            form_data["report_time"] = v
-        elif k == "reliefTime":
-            form_data["relief_time"] = v
-        elif k == "overtimeHours":
-            form_data["overtime_hours"] = v
-        elif k == "accountNumber":
-            form_data["acct_number"] = v
-        elif k == "reportLocation":
-            form_data["report_loc"] = v
+        # If not mapped by enhanced mapping, use legacy logic
+        if not mapped:
+            # Handle nested employee data first
+            if k == "employee_pass_number" or k == "employee_pass":
+                form_data["pass_number"] = v
+            elif k == "employee_name" or k == "employee_name":
+                form_data["employee_name"] = v
+            elif k == "employee_title" or k == "employee_title":
+                form_data["title"] = v
+            elif k == "employee_rdoe" or k == "employee_rdo":
+                form_data["rdos"] = v
+            elif k == "employee_rc_number" or k == "employee_rc":
+                form_data["rc_number"] = v
+            
+            # Handle direct field mappings for merged data
+            elif k == "name":
+                form_data["employee_name"] = v
+            elif k == "rduos" or k == "rdo":
+                form_data["rdos"] = v
+            
+            # Handle new camelCase field names
+            elif k == "employeeName":
+                form_data["employee_name"] = v
+            elif k == "passNumber":
+                form_data["pass_number"] = v
+            elif k == "rDOs":
+                form_data["rdos"] = v
+            elif k == "rcNumber":
+                form_data["rc_number"] = v
+            elif k == "jobNumber":
+                form_data["job_number"] = v
+            elif k == "overtimeLocation":
+                form_data["overtime_location"] = v
+            elif k == "reportTime":
+                form_data["report_time"] = v
+            elif k == "reliefTime":
+                form_data["relief_time"] = v
+            elif k == "overtimeHours":
+                form_data["overtime_hours"] = v
+            elif k == "accountNumber":
+                form_data["acct_number"] = v
+            elif k == "reportLocation":
+                form_data["report_loc"] = v
         
         # Handle various date field formats
         elif k in ["DATE", "date", "s_m", "W/T", "w_t"]:
